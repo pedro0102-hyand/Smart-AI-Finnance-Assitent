@@ -8,11 +8,15 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
+# Histórico em memória por session_id
+# Formato: { session_id: [ {"role": "user"|"model", "parts": "..."}, ... ] }
+conversation_history: dict[str, list[dict]] = {}
 
-def chat_with_ai(message: str, financial_context: dict) -> str:
+
+def chat_with_ai(message: str, financial_context: dict, session_id: str) -> str:
     """
     Envia uma mensagem ao Gemini com o contexto financeiro completo do usuário.
-    O contexto vem do get_financial_summary — única fonte de verdade.
+    Mantém histórico de conversa por session_id em memória.
     """
     expenses_text = "\n".join(
         f"  - {exp['description']} ({exp['category']}): R$ {exp['amount']:.2f} "
@@ -34,8 +38,34 @@ Gastos detalhados:
 
 Use esses dados para responder com precisão e personalização.
 Responda sempre em português, de forma clara e acessível.
+Lembre-se do contexto das mensagens anteriores para manter uma conversa coerente.
 """
 
-    full_prompt = system_prompt + "\n\nPergunta do usuário:\n" + message
+    # Inicializa histórico da sessão se não existir
+    if session_id not in conversation_history:
+        conversation_history[session_id] = []
+
+    history = conversation_history[session_id]
+
+    # Monta histórico + nova mensagem como prompt completo
+    history_text = ""
+    for entry in history:
+        role = "Usuário" if entry["role"] == "user" else "Assistente"
+        history_text += f"{role}: {entry['parts']}\n"
+
+    full_prompt = system_prompt + "\n\nHistórico da conversa:\n" + history_text + "\nUsuário: " + message
+
     response = model.generate_content(full_prompt)
-    return response.text
+    reply = response.text
+
+    # Persiste a nova troca no histórico
+    history.append({"role": "user", "parts": message})
+    history.append({"role": "model", "parts": reply})
+
+    return reply
+
+
+def clear_history(session_id: str) -> None:
+    """Limpa o histórico de uma sessão específica."""
+    if session_id in conversation_history:
+        del conversation_history[session_id]
