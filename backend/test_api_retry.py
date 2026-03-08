@@ -17,7 +17,7 @@ def test_retry_success_first_attempt():
 
 # ── Teste 2: falha por rate limit, sucede no 2º retry ──
 def test_retry_succeeds_on_second_attempt():
-    calls = {"count": 0}
+    calls = {"count": 0} 
 
     @with_gemini_retry(max_retries=3, base_delay=0)
     def func():
