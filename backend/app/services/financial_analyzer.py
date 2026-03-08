@@ -1,4 +1,5 @@
 import os
+import unicodedata
 import google.generativeai as genai
 from dotenv import load_dotenv
 
@@ -9,16 +10,43 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
 # Mapeamento normalizado de categorias para urgência
-HIGH_URGENCY = ["moradia", "alimentação", "alimentacao", "saúde", "saude", "transporte"]
-MEDIUM_URGENCY = ["educação", "educacao", "internet", "serviços", "servicos", "utilidades"]
+# Todas as strings já estão sem acento e em lowercase para comparação segura
+HIGH_URGENCY = {"moradia", "alimentacao", "saude", "transporte"}
+MEDIUM_URGENCY = {"educacao", "internet", "servicos", "utilidades"}
+
+
+def _normalize(text: str) -> str:
+    """
+    Normaliza uma string para comparação:
+    - Remove acentos via decomposição Unicode (NFD) + filtragem de diacríticos
+    - Converte para lowercase
+    - Remove espaços extras
+
+    Exemplos:
+        "Saúde"       → "saude"
+        "Alimentação" → "alimentacao"
+        "MORADIA"     → "moradia"
+        "  Serviços " → "servicos"
+    """
+    text = text.strip().lower()
+    # Decompõe caracteres acentuados (ex: "ã" → "a" + combining tilde)
+    nfd = unicodedata.normalize("NFD", text)
+    # Mantém apenas caracteres que não são diacríticos (Mn = Mark, Nonspacing)
+    return "".join(char for char in nfd if unicodedata.category(char) != "Mn")
 
 
 def classify_expense(category: str) -> str:
     """
     Classifica a urgência de um gasto com base na categoria.
-    A comparação é feita em lowercase e sem acento para evitar erros de digitação.
+    A comparação é resistente a acentos, maiúsculas e espaços extras.
+
+    Exemplos de inputs aceitos corretamente:
+        "Saúde", "saude", "SAÚDE"         → Alta urgência
+        "Alimentação", "alimentacao"       → Alta urgência
+        "Educação", "educacao", "EDUCAÇÃO" → Média urgência
+        "Streaming", "lazer"               → Baixa urgência
     """
-    normalized = category.strip().lower()
+    normalized = _normalize(category)
 
     if normalized in HIGH_URGENCY:
         return "Alta urgência"
