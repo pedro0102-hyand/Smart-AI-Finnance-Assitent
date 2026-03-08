@@ -4,6 +4,7 @@ import hashlib
 import json
 import google.generativeai as genai
 from dotenv import load_dotenv
+from app.services.api_retry import with_gemini_retry
 
 load_dotenv()
 
@@ -27,6 +28,11 @@ SESSION_TTL = 3600       # tempo de vida da sessão em segundos (1 hora)
 # }
 # ──────────────────────────────────────────────
 _sessions: dict[str, dict] = {}
+
+_RATE_LIMIT_FALLBACK = (
+    "O assistente está temporariamente indisponível devido a sobrecarga. "
+    "Por favor, aguarde alguns instantes e tente novamente."
+)
 
 
 # ──────────────────────────────────────────────
@@ -75,7 +81,7 @@ def _get_or_create_session(session_id: str, financial_context: dict) -> dict:
     # Sessão não existe ou expirou → cria do zero
     if session is None or (now - session["last_active"]) > SESSION_TTL:
         _sessions[session_id] = {
-            "history": [],           # lista de {"role": str, "parts": [str]}
+            "history": [],
             "last_active": now,
             "context_hash": new_hash,
             "system_prompt": _build_system_prompt(financial_context),
@@ -100,7 +106,6 @@ def _trim_history(history: list[dict]) -> list[dict]:
     max_entries = MAX_HISTORY_TURNS * 2
     trimmed = history[-max_entries:] if len(history) > max_entries else history
 
-    # A API do Gemini exige que o histórico comece sempre com "user"
     while trimmed and trimmed[0]["role"] != "user":
         trimmed = trimmed[1:]
 
@@ -119,24 +124,37 @@ def _purge_expired_sessions() -> None:
 
 
 # ──────────────────────────────────────────────
+# Chamada à API isolada — decorator aplicado aqui
+# ──────────────────────────────────────────────
+
+@with_gemini_retry(max_retries=3, base_delay=2.0, fallback_value=_RATE_LIMIT_FALLBACK)
+def _send_message(chat, message: str) -> str:
+    """
+    Camada fina sobre chat.send_message().
+    Isolada em função própria para que o decorator de retry funcione corretamente
+    — decorators não conseguem fazer retry em blocos try/except internos.
+    """
+    response = chat.send_message(message)
+
+    if not response.text or not response.text.strip():
+        raise ValueError("Resposta vazia recebida do modelo.")
+
+    return response.text
+
+
+# ──────────────────────────────────────────────
 # Interface pública
 # ──────────────────────────────────────────────
 
 def chat_with_ai(message: str, financial_context: dict, session_id: str) -> str:
     """
     Envia uma mensagem ao Gemini usando ChatSession nativa com histórico estruturado.
-
-    Vantagens sobre a abordagem de string concatenada:
-    - Usa a API de multi-turn do Gemini corretamente (roles user/model separados)
-    - Menos tokens desperdiçados com formatação manual de histórico
-    - O modelo entende melhor a estrutura de turnos
-    - Histórico limitado a MAX_HISTORY_TURNS para evitar crescimento ilimitado
+    Inclui retry automático com backoff exponencial para erros de rate limit (429).
     """
     _purge_expired_sessions()
 
     session = _get_or_create_session(session_id, financial_context)
 
-    # ── Cria o model com system instruction e inicia chat com histórico ──
     model = genai.GenerativeModel(
         model_name="gemini-2.5-flash-lite",
         system_instruction=session["system_prompt"],
@@ -144,17 +162,10 @@ def chat_with_ai(message: str, financial_context: dict, session_id: str) -> str:
 
     chat = model.start_chat(history=session["history"])
 
-    # ── Chamada à API com tratamento de erro ──
     try:
-        response = chat.send_message(message)
-        reply = response.text
-
-        if not reply or not reply.strip():
-            raise ValueError("Resposta vazia recebida do modelo.")
-
+        reply = _send_message(chat, message)
     except ValueError as e:
         return f"Desculpe, não consegui gerar uma resposta no momento. Tente reformular sua pergunta. (Detalhe: {e})"
-
     except Exception as e:
         error_type = type(e).__name__
         return (
@@ -162,14 +173,12 @@ def chat_with_ai(message: str, financial_context: dict, session_id: str) -> str:
             "Por favor, tente novamente em instantes."
         )
 
-    # ── Persiste o histórico atualizado (vindo do ChatSession, já estruturado) ──
-    # chat.history retorna lista de glm.Content com role e parts nativos
+    # Persiste o histórico atualizado vindo do ChatSession
     raw_history = chat.history
     structured_history = [
         {"role": turn.role, "parts": [part.text for part in turn.parts]}
         for turn in raw_history
     ]
-
     session["history"] = _trim_history(structured_history)
 
     return reply
