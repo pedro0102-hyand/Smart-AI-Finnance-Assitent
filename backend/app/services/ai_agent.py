@@ -9,8 +9,6 @@ load_dotenv()
 
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-model = genai.GenerativeModel("gemini-2.5-flash-lite")
-
 # ──────────────────────────────────────────────
 # Configurações
 # ──────────────────────────────────────────────
@@ -21,10 +19,10 @@ SESSION_TTL = 3600       # tempo de vida da sessão em segundos (1 hora)
 # Estrutura interna de sessão
 # {
 #   session_id: {
-#     "history": [...],
-#     "last_active": float (timestamp),
-#     "context_hash": str,      ← hash do contexto financeiro atual
-#     "system_prompt": str,     ← prompt cacheado para essa sessão
+#     "history": [{"role": "user"|"model", "parts": [str]}, ...],
+#     "last_active": float,
+#     "context_hash": str,
+#     "system_prompt": str,
 #   }
 # }
 # ──────────────────────────────────────────────
@@ -72,13 +70,12 @@ def _get_or_create_session(session_id: str, financial_context: dict) -> dict:
     """
     now = time.time()
     new_hash = _hash_context(financial_context)
-
     session = _sessions.get(session_id)
 
     # Sessão não existe ou expirou → cria do zero
     if session is None or (now - session["last_active"]) > SESSION_TTL:
         _sessions[session_id] = {
-            "history": [],
+            "history": [],           # lista de {"role": str, "parts": [str]}
             "last_active": now,
             "context_hash": new_hash,
             "system_prompt": _build_system_prompt(financial_context),
@@ -98,11 +95,16 @@ def _trim_history(history: list[dict]) -> list[dict]:
     """
     Mantém apenas os últimos MAX_HISTORY_TURNS turnos.
     Cada turno = 1 mensagem user + 1 mensagem model = 2 entradas.
+    Garante que o histórico sempre começa com uma mensagem do user (invariante da API).
     """
     max_entries = MAX_HISTORY_TURNS * 2
-    if len(history) > max_entries:
-        return history[-max_entries:]
-    return history
+    trimmed = history[-max_entries:] if len(history) > max_entries else history
+
+    # A API do Gemini exige que o histórico comece sempre com "user"
+    while trimmed and trimmed[0]["role"] != "user":
+        trimmed = trimmed[1:]
+
+    return trimmed
 
 
 def _purge_expired_sessions() -> None:
@@ -122,37 +124,29 @@ def _purge_expired_sessions() -> None:
 
 def chat_with_ai(message: str, financial_context: dict, session_id: str) -> str:
     """
-    Envia uma mensagem ao Gemini com o contexto financeiro do usuário.
+    Envia uma mensagem ao Gemini usando ChatSession nativa com histórico estruturado.
 
-    Melhorias aplicadas:
-    - Histórico limitado a MAX_HISTORY_TURNS turnos (evita vazamento de memória)
-    - System prompt cacheado por sessão (reconstruído só quando o contexto muda)
-    - Sessões expiradas removidas automaticamente após SESSION_TTL segundos
-    - Erros da API tratados com mensagem amigável ao usuário
+    Vantagens sobre a abordagem de string concatenada:
+    - Usa a API de multi-turn do Gemini corretamente (roles user/model separados)
+    - Menos tokens desperdiçados com formatação manual de histórico
+    - O modelo entende melhor a estrutura de turnos
+    - Histórico limitado a MAX_HISTORY_TURNS para evitar crescimento ilimitado
     """
     _purge_expired_sessions()
 
     session = _get_or_create_session(session_id, financial_context)
-    history = session["history"]
-    system_prompt = session["system_prompt"]
 
-    # Monta histórico formatado
-    history_text = ""
-    for entry in history:
-        role = "Usuário" if entry["role"] == "user" else "Assistente"
-        history_text += f"{role}: {entry['parts']}\n"
-
-    full_prompt = (
-        system_prompt
-        + "\n\nHistórico da conversa:\n"
-        + history_text
-        + "\nUsuário: "
-        + message
+    # ── Cria o model com system instruction e inicia chat com histórico ──
+    model = genai.GenerativeModel(
+        model_name="gemini-2.5-flash-lite",
+        system_instruction=session["system_prompt"],
     )
+
+    chat = model.start_chat(history=session["history"])
 
     # ── Chamada à API com tratamento de erro ──
     try:
-        response = model.generate_content(full_prompt)
+        response = chat.send_message(message)
         reply = response.text
 
         if not reply or not reply.strip():
@@ -162,17 +156,21 @@ def chat_with_ai(message: str, financial_context: dict, session_id: str) -> str:
         return f"Desculpe, não consegui gerar uma resposta no momento. Tente reformular sua pergunta. (Detalhe: {e})"
 
     except Exception as e:
-        # Cobre: timeouts, erros de quota, falhas de rede, etc.
         error_type = type(e).__name__
         return (
             f"Ocorreu um erro ao se comunicar com o assistente ({error_type}). "
             "Por favor, tente novamente em instantes."
         )
 
-    # Persiste a nova troca e aplica o limite de histórico
-    history.append({"role": "user", "parts": message})
-    history.append({"role": "model", "parts": reply})
-    session["history"] = _trim_history(history)
+    # ── Persiste o histórico atualizado (vindo do ChatSession, já estruturado) ──
+    # chat.history retorna lista de glm.Content com role e parts nativos
+    raw_history = chat.history
+    structured_history = [
+        {"role": turn.role, "parts": [part.text for part in turn.parts]}
+        for turn in raw_history
+    ]
+
+    session["history"] = _trim_history(structured_history)
 
     return reply
 

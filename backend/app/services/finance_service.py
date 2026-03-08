@@ -1,6 +1,5 @@
 from app.models.salary import Salary
 from app.models.expense import Expense
-from app.services.financial_analyzer import classify_expense
 from sqlalchemy.orm import Session
 
 
@@ -9,7 +8,7 @@ def get_financial_summary(db: Session) -> dict | None:
     Retorna o resumo financeiro completo do usuário.
     Única fonte de verdade — usada pelo chat, summary e purchase.
     """
-    salary = db.query(Salary).order_by(Salary.id.desc()).first()
+    salary = db.query(Salary).filter(Salary.is_current == True).first()
     if not salary:
         return None
 
@@ -29,8 +28,9 @@ def get_financial_summary(db: Session) -> dict | None:
             "description": exp.description,
             "amount": exp.amount,
             "category": exp.category,
-            "urgency": classify_expense(exp.category),
-            "impact_percent": round(impact_percent, 2)
+            "urgency": exp.urgency,           # ✅ usa o valor persistido no banco
+            "impact_percent": round(impact_percent, 2),
+            "created_at": exp.created_at.isoformat() if exp.created_at else None,
         })
 
     return {
@@ -40,4 +40,4 @@ def get_financial_summary(db: Session) -> dict | None:
         "percent_spent": round(percent_spent, 2),
         "percent_remaining": round(percent_remaining, 2),
         "expenses": detailed_expenses,
-    }    
+    }
