@@ -1,33 +1,24 @@
-import os
-import time
 import hashlib
 import json
+import logging
+import os
+
 import google.generativeai as genai
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
+
 from app.services.api_retry import with_gemini_retry
+from app.services import chat_repository as repo
 
 load_dotenv()
-
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+
+logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────
 # Configurações
 # ──────────────────────────────────────────────
 MAX_HISTORY_TURNS = 10   # máximo de turnos (1 turno = 1 user + 1 model)
-SESSION_TTL = 3600       # tempo de vida da sessão em segundos (1 hora)
-
-# ──────────────────────────────────────────────
-# Estrutura interna de sessão
-# {
-#   session_id: {
-#     "history": [{"role": "user"|"model", "parts": [str]}, ...],
-#     "last_active": float,
-#     "context_hash": str,
-#     "system_prompt": str,
-#   }
-# }
-# ──────────────────────────────────────────────
-_sessions: dict[str, dict] = {}
 
 _RATE_LIMIT_FALLBACK = (
     "O assistente está temporariamente indisponível devido a sobrecarga. "
@@ -36,13 +27,14 @@ _RATE_LIMIT_FALLBACK = (
 
 
 # ──────────────────────────────────────────────
-# Helpers internos
+# Helpers
 # ──────────────────────────────────────────────
 
 def _hash_context(financial_context: dict) -> str:
     """Gera um hash do contexto financeiro para detectar mudanças."""
-    serialized = json.dumps(financial_context, sort_keys=True)
-    return hashlib.md5(serialized.encode()).hexdigest()
+    return hashlib.md5(
+        json.dumps(financial_context, sort_keys=True).encode()
+    ).hexdigest()
 
 
 def _build_system_prompt(financial_context: dict) -> str:
@@ -69,39 +61,10 @@ Responda sempre em português, de forma clara e acessível.
 Lembre-se do contexto das mensagens anteriores para manter uma conversa coerente."""
 
 
-def _get_or_create_session(session_id: str, financial_context: dict) -> dict:
-    """
-    Retorna a sessão existente ou cria uma nova.
-    Recria o system prompt apenas se o contexto financeiro mudou.
-    """
-    now = time.time()
-    new_hash = _hash_context(financial_context)
-    session = _sessions.get(session_id)
-
-    # Sessão não existe ou expirou → cria do zero
-    if session is None or (now - session["last_active"]) > SESSION_TTL:
-        _sessions[session_id] = {
-            "history": [],
-            "last_active": now,
-            "context_hash": new_hash,
-            "system_prompt": _build_system_prompt(financial_context),
-        }
-        return _sessions[session_id]
-
-    # Sessão existe mas contexto financeiro mudou → atualiza só o prompt
-    if session["context_hash"] != new_hash:
-        session["context_hash"] = new_hash
-        session["system_prompt"] = _build_system_prompt(financial_context)
-
-    session["last_active"] = now
-    return session
-
-
 def _trim_history(history: list[dict]) -> list[dict]:
     """
     Mantém apenas os últimos MAX_HISTORY_TURNS turnos.
-    Cada turno = 1 mensagem user + 1 mensagem model = 2 entradas.
-    Garante que o histórico sempre começa com uma mensagem do user (invariante da API).
+    Garante que o histórico sempre começa com uma mensagem do user.
     """
     max_entries = MAX_HISTORY_TURNS * 2
     trimmed = history[-max_entries:] if len(history) > max_entries else history
@@ -112,27 +75,39 @@ def _trim_history(history: list[dict]) -> list[dict]:
     return trimmed
 
 
-def _purge_expired_sessions() -> None:
-    """Remove sessões que ultrapassaram o TTL. Chamado a cada interação."""
-    now = time.time()
-    expired = [
-        sid for sid, data in _sessions.items()
-        if (now - data["last_active"]) > SESSION_TTL
-    ]
-    for sid in expired:
-        del _sessions[sid]
+def _get_or_create_session(session_id: str, financial_context: dict, db: Session) -> dict:
+    """
+    Carrega a sessão do banco (via cache) ou cria uma nova.
+    Atualiza o system prompt se o contexto financeiro mudou.
+    """
+    new_hash = _hash_context(financial_context)
+    session  = repo.load_session(session_id, db)
+
+    if session is None:
+        session = {
+            "history":       [],
+            "context_hash":  new_hash,
+            "system_prompt": _build_system_prompt(financial_context),
+        }
+        repo.save_session(session_id, session, db)
+        return session
+
+    if session["context_hash"] != new_hash:
+        session["context_hash"]  = new_hash
+        session["system_prompt"] = _build_system_prompt(financial_context)
+
+    return session
 
 
 # ──────────────────────────────────────────────
-# Chamada à API isolada — decorator aplicado aqui
+# Chamada à API isolada — decorator de retry aplicado aqui
 # ──────────────────────────────────────────────
 
 @with_gemini_retry(max_retries=3, base_delay=2.0, fallback_value=_RATE_LIMIT_FALLBACK)
 def _send_message(chat, message: str) -> str:
     """
     Camada fina sobre chat.send_message().
-    Isolada em função própria para que o decorator de retry funcione corretamente
-    — decorators não conseguem fazer retry em blocos try/except internos.
+    Isolada para que o decorator de retry consiga capturar a exceção corretamente.
     """
     response = chat.send_message(message)
 
@@ -146,26 +121,31 @@ def _send_message(chat, message: str) -> str:
 # Interface pública
 # ──────────────────────────────────────────────
 
-def chat_with_ai(message: str, financial_context: dict, session_id: str) -> str:
+def chat_with_ai(message: str, financial_context: dict, session_id: str, db: Session) -> str:
     """
-    Envia uma mensagem ao Gemini usando ChatSession nativa com histórico estruturado.
-    Inclui retry automático com backoff exponencial para erros de rate limit (429).
+    Envia uma mensagem ao Gemini e persiste o histórico no SQLite.
+
+    Fluxo:
+    1. Carrega sessão do cache ou banco
+    2. Envia mensagem ao Gemini com histórico completo
+    3. Persiste histórico atualizado no banco
+    4. Retorna resposta ao usuário
     """
-    _purge_expired_sessions()
+    session = _get_or_create_session(session_id, financial_context, db)
 
-    session = _get_or_create_session(session_id, financial_context)
-
-    model = genai.GenerativeModel(
+    gemini_model = genai.GenerativeModel(
         model_name="gemini-2.5-flash-lite",
         system_instruction=session["system_prompt"],
     )
-
-    chat = model.start_chat(history=session["history"])
+    chat = gemini_model.start_chat(history=session["history"])
 
     try:
         reply = _send_message(chat, message)
     except ValueError as e:
-        return f"Desculpe, não consegui gerar uma resposta no momento. Tente reformular sua pergunta. (Detalhe: {e})"
+        return (
+            "Desculpe, não consegui gerar uma resposta no momento. "
+            f"Tente reformular sua pergunta. (Detalhe: {e})"
+        )
     except Exception as e:
         error_type = type(e).__name__
         return (
@@ -173,18 +153,24 @@ def chat_with_ai(message: str, financial_context: dict, session_id: str) -> str:
             "Por favor, tente novamente em instantes."
         )
 
-    # Persiste o histórico atualizado vindo do ChatSession
-    raw_history = chat.history
     structured_history = [
         {"role": turn.role, "parts": [part.text for part in turn.parts]}
-        for turn in raw_history
+        for turn in chat.history
     ]
     session["history"] = _trim_history(structured_history)
+
+    try:
+        repo.save_session(session_id, session, db)
+    except Exception:
+        logger.exception(
+            "Não foi possível persistir o histórico da sessão '%s'. "
+            "A conversa continuará apenas em memória até o próximo restart.",
+            session_id,
+        )
 
     return reply
 
 
-def clear_history(session_id: str) -> None:
-    """Limpa o histórico de uma sessão específica."""
-    if session_id in _sessions:
-        del _sessions[session_id]
+def clear_history(session_id: str, db: Session) -> None:
+    """Remove o histórico do banco e do cache para uma sessão específica."""
+    repo.delete_session(session_id, db)

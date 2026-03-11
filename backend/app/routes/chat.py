@@ -10,7 +10,7 @@ router = APIRouter(prefix="/chat", tags=["AI"])
 
 class ChatRequest(BaseModel):
     message: str
-    session_id: str  # identifica a sessão de cada aba/usuário
+    session_id: str
 
 
 class ChatResponse(BaseModel):
@@ -31,14 +31,15 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)):
     reply = chat_with_ai(
         message=request.message,
         financial_context=financial_context,
-        session_id=request.session_id
+        session_id=request.session_id,
+        db=db,                          # ← db agora passado para persistência
     )
 
     return ChatResponse(response=reply, session_id=request.session_id)
 
 
 @router.delete("/history/{session_id}")
-def delete_history(session_id: str):
+def delete_history(session_id: str, db: Session = Depends(get_db)):
     """Limpa o histórico de conversa de uma sessão específica."""
-    clear_history(session_id)
+    clear_history(session_id, db)       # ← db agora passado para deleção no banco
     return {"message": f"Histórico da sessão '{session_id}' apagado com sucesso."}
