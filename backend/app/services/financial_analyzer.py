@@ -6,7 +6,6 @@ import unicodedata
 import logging
 
 from google import genai
-from google.genai import types
 from dotenv import load_dotenv
 from app.services.api_retry import with_gemini_retry
 
