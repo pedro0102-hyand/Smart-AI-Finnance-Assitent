@@ -3,63 +3,55 @@ import time
 import hashlib
 import json
 import unicodedata
-import google.generativeai as genai
+import logging
+
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 from app.services.api_retry import with_gemini_retry
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+# ── Cliente único compartilhado ───────────────────────────────────────────────
+_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
-model = genai.GenerativeModel("gemini-2.5-flash-lite")
+logger = logging.getLogger(__name__)
+
+MODEL_NAME = "gemini-2.5-flash-lite"
 
 # ──────────────────────────────────────────────
 # Categorias de urgência expandidas
 # ──────────────────────────────────────────────
 HIGH_URGENCY = {
-    # Moradia
     "moradia", "aluguel", "condominio", "iptu", "financiamento",
-    # Alimentação
     "alimentacao", "supermercado", "mercado", "feira", "padaria",
-    # Saúde
     "saude", "medico", "consulta", "farmacia", "remedio", "hospital",
     "plano de saude", "odontologico", "dentista", "exame",
-    # Contas essenciais
     "agua", "luz", "energia", "gas", "energia eletrica",
-    # Transporte
     "transporte", "combustivel", "gasolina", "onibus", "metro",
     "uber", "taxi", "estacionamento", "seguro veiculo",
 }
 
 MEDIUM_URGENCY = {
-    # Educação
     "educacao", "escola", "faculdade", "curso", "mensalidade",
     "livros", "material escolar",
-    # Conectividade
     "internet", "telefone", "celular", "plano celular",
-    # Serviços e utilidades
     "servicos", "utilidades", "streaming", "assinatura",
     "academia", "seguro", "seguro vida", "previdencia",
-    # Cuidado pessoal básico
     "higiene", "cuidado pessoal",
 }
 
 # ──────────────────────────────────────────────
-# Cache para classificação via IA (fallback)
+# Cache para classificação via IA
 # ──────────────────────────────────────────────
 URGENCY_CACHE_TTL = 86400  # 24h
 _urgency_cache: dict[str, dict] = {}
 
 
 def _normalize(text: str) -> str:
-    """
-    Normaliza uma string para comparação segura:
-    - Remove espaços extras e converte para lowercase
-    - Remove acentos via decomposição Unicode (NFD)
-    """
     text = text.strip().lower()
     nfd = unicodedata.normalize("NFD", text)
-    return "".join(char for char in nfd if unicodedata.category(char) != "Mn")
+    return "".join(c for c in nfd if unicodedata.category(c) != "Mn")
 
 
 def _get_cached_urgency(category: str) -> str | None:
@@ -79,31 +71,47 @@ def _set_cached_urgency(category: str, result: str) -> None:
 
 
 # ──────────────────────────────────────────────
-# Chamada à API isolada — com retry para rate limit
+# Chamadas à API isoladas — decorator aplicado aqui
 # ──────────────────────────────────────────────
 
 @with_gemini_retry(max_retries=3, base_delay=2.0, fallback_value="Baixa urgência")
 def _call_classify_api(prompt: str) -> str:
     """
-    Faz a chamada real à API para classificação de urgência.
-    Isolada para que o decorator de retry funcione corretamente.
-    Fallback para "Baixa urgência" se todos os retries esgotarem.
+    Chama a API para classificar a urgência de uma categoria desconhecida.
+    Usa generate_content do novo SDK em vez de model.generate_content().
     """
-    response = model.generate_content(prompt)
-    raw = response.text.strip()
-
-    # Remove formatação markdown que o modelo pode retornar acidentalmente
-    raw = raw.strip("*_`\n ")
+    response = _client.models.generate_content(
+        model=MODEL_NAME,
+        contents=prompt,
+    )
+    raw = response.text.strip().strip("*_`\n ")
 
     valid = {"Alta urgência", "Média urgência", "Baixa urgência"}
     return raw if raw in valid else "Baixa urgência"
 
 
+@with_gemini_retry(max_retries=3, base_delay=2.0, fallback_value=None)
+def _call_suggestion_api(prompt: str) -> str:
+    """
+    Chama a API para gerar sugestões financeiras personalizadas.
+    Lança ValueError se a resposta vier vazia (será tratado pelo chamador).
+    """
+    response = _client.models.generate_content(
+        model=MODEL_NAME,
+        contents=prompt,
+    )
+
+    if not response.text or not response.text.strip():
+        raise ValueError("Resposta vazia recebida do modelo.")
+
+    return response.text
+
+
+# ──────────────────────────────────────────────
+# Interface pública
+# ──────────────────────────────────────────────
+
 def _classify_via_ai(category: str) -> str:
-    """
-    Fallback: usa o Gemini para classificar categorias desconhecidas.
-    Inclui cache de 24h para evitar chamadas repetidas para a mesma categoria.
-    """
     cached = _get_cached_urgency(category)
     if cached:
         return cached
@@ -130,11 +138,8 @@ Critérios:
 def classify_expense(category: str) -> str:
     """
     Classifica a urgência de um gasto com base na categoria.
-
-    Fluxo:
-    1. Normaliza o texto (remove acentos, lowercase, espaços)
-    2. Verifica contra os sets de alta e média urgência (rápido, sem custo de API)
-    3. Se não encontrar, usa o Gemini como fallback (com cache de 24h)
+    1. Verifica sets locais (sem custo de API)
+    2. Fallback para Gemini (com cache de 24h)
     """
     normalized = _normalize(category)
 
@@ -159,8 +164,7 @@ def _build_cache_key(expenses: list[dict], salary: float, percent_spent: float) 
         "salary": round(salary, 2),
         "percent_spent": round(percent_spent, 2),
     }
-    serialized = json.dumps(payload, sort_keys=True)
-    return hashlib.md5(serialized.encode()).hexdigest()
+    return hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
 def _get_cached_suggestion(cache_key: str) -> str | None:
@@ -179,37 +183,15 @@ def _set_cached_suggestion(cache_key: str, result: str) -> None:
     }
 
 
-_SUGGESTION_RATE_LIMIT_MSG = (
-    "O serviço de sugestões está temporariamente indisponível por sobrecarga. "
-    "Tente novamente em alguns instantes."
-)
-
-
-@with_gemini_retry(max_retries=3, base_delay=2.0, fallback_value=_SUGGESTION_RATE_LIMIT_MSG)
-def _call_suggestion_api(prompt: str) -> str:
-    """
-    Faz a chamada real à API para geração de sugestões financeiras.
-    Isolada para que o decorator de retry funcione corretamente.
-    """
-    response = model.generate_content(prompt)
-
-    if not response.text or not response.text.strip():
-        raise ValueError("Resposta vazia recebida do modelo.")
-
-    return response.text
-
-
 def generate_suggestion(expenses: list[dict], salary: float, percent_spent: float) -> str:
     """
-    Usa o Gemini para gerar sugestões financeiras personalizadas.
+    Gera sugestões financeiras personalizadas via Gemini.
     Resultado cacheado por SUGGESTION_CACHE_TTL segundos.
-    Inclui retry automático com backoff exponencial para erros de rate limit.
     """
     if not expenses:
         return "Nenhum gasto cadastrado para análise."
 
     cache_key = _build_cache_key(expenses, salary, percent_spent)
-
     cached = _get_cached_suggestion(cache_key)
     if cached:
         return cached
@@ -239,6 +221,11 @@ Seja direto, claro e use linguagem acessível. Responda em português."""
 
     try:
         result = _call_suggestion_api(prompt)
+        if result is None:
+            return (
+                "O serviço de sugestões está temporariamente indisponível por sobrecarga. "
+                "Tente novamente em alguns instantes."
+            )
         _set_cached_suggestion(cache_key, result)
         return result
 

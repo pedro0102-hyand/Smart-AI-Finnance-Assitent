@@ -1,7 +1,7 @@
 import time
 import logging
 from functools import wraps
-from typing import Callable, Type
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -9,26 +9,34 @@ logger = logging.getLogger(__name__)
 # Constantes de retry
 # ──────────────────────────────────────────────
 DEFAULT_MAX_RETRIES = 3
-DEFAULT_BASE_DELAY = 2.0   # segundos — delay inicial antes do primeiro retry
-DEFAULT_MAX_DELAY = 30.0   # segundos — teto para o backoff exponencial
+DEFAULT_BASE_DELAY  = 2.0   # segundos — delay inicial antes do primeiro retry
+DEFAULT_MAX_DELAY   = 30.0  # segundos — teto para o backoff exponencial
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
     """
     Detecta erros de rate limit / quota esgotada da API Gemini.
 
-    O google-generativeai levanta diferentes tipos dependendo da versão:
-    - google.api_core.exceptions.ResourceExhausted  (quota diária)
-    - google.api_core.exceptions.TooManyRequests    (rate limit por minuto)
-    - Erros com código HTTP 429 encapsulados em Exception genérica
-    """
-    error_type = type(exc).__name__
+    No novo SDK (google-genai), o erro correto é:
+        google.genai.errors.APIError  com  exc.code == 429
 
-    # Captura via nome do tipo (evita import direto de google.api_core)
+    Mantemos também a detecção por nome de tipo e mensagem como fallback,
+    para cobrir eventuais variações entre versões do SDK.
+    """
+    # ── Detecção primária: novo SDK google-genai ──────────────────────────────
+    try:
+        from google.genai import errors as genai_errors
+        if isinstance(exc, genai_errors.APIError):
+            return getattr(exc, "code", None) == 429
+    except ImportError:
+        pass
+
+    # ── Fallback: detecção por nome do tipo (google-api-core) ─────────────────
+    error_type = type(exc).__name__
     if error_type in ("ResourceExhausted", "TooManyRequests"):
         return True
 
-    # Captura via mensagem — fallback para versões que encapsulam o 429
+    # ── Fallback: detecção por mensagem ───────────────────────────────────────
     error_msg = str(exc).lower()
     return "429" in error_msg or "resource exhausted" in error_msg or "quota" in error_msg
 
@@ -45,8 +53,8 @@ def with_gemini_retry(
     Comportamento:
     - Só faz retry em erros de rate limit / quota (429 / ResourceExhausted)
     - Outros erros são relançados imediatamente (sem retry desnecessário)
-    - Backoff: delay * 2^tentativa (ex: 2s, 4s, 8s para base_delay=2)
-    - Se todas as tentativas falharem e fallback_value for fornecido, retorna o fallback
+    - Backoff: base_delay * 2^tentativa  (ex: 2s → 4s → 8s para base_delay=2)
+    - Se todos os retries esgotarem e fallback_value for fornecido, retorna o fallback
     - Se fallback_value for None, relança a última exceção
 
     Params:
@@ -66,8 +74,7 @@ def with_gemini_retry(
 
                 except Exception as exc:
                     if not _is_rate_limit_error(exc):
-                        # Não é rate limit — relança imediatamente sem retry
-                        raise
+                        raise  # não é rate limit — relança imediatamente
 
                     last_exc = exc
                     if attempt == max_retries:
@@ -81,7 +88,6 @@ def with_gemini_retry(
                     )
                     time.sleep(delay)
 
-            # Todas as tentativas falharam
             logger.error(
                 "Todas as %d tentativas falharam em '%s' por rate limit.",
                 max_retries + 1, func.__name__,

@@ -3,7 +3,8 @@ import json
 import logging
 import os
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 
@@ -11,14 +12,17 @@ from app.services.api_retry import with_gemini_retry
 from app.services import chat_repository as repo
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+
+# ── Cliente único compartilhado — novo SDK usa Client() em vez de configure() ──
+_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
 logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────
 # Configurações
 # ──────────────────────────────────────────────
-MAX_HISTORY_TURNS = 10   # máximo de turnos (1 turno = 1 user + 1 model)
+MODEL_NAME        = "gemini-2.5-flash-lite"
+MAX_HISTORY_TURNS = 10
 
 _RATE_LIMIT_FALLBACK = (
     "O assistente está temporariamente indisponível devido a sobrecarga. "
@@ -31,14 +35,12 @@ _RATE_LIMIT_FALLBACK = (
 # ──────────────────────────────────────────────
 
 def _hash_context(financial_context: dict) -> str:
-    """Gera um hash do contexto financeiro para detectar mudanças."""
     return hashlib.md5(
         json.dumps(financial_context, sort_keys=True).encode()
     ).hexdigest()
 
 
 def _build_system_prompt(financial_context: dict) -> str:
-    """Monta o system prompt com o contexto financeiro do usuário."""
     expenses_text = "\n".join(
         f"  - {exp['description']} ({exp['category']}): R$ {exp['amount']:.2f} "
         f"[{exp['urgency']}] — {exp['impact_percent']}% da renda"
@@ -68,18 +70,41 @@ def _trim_history(history: list[dict]) -> list[dict]:
     """
     max_entries = MAX_HISTORY_TURNS * 2
     trimmed = history[-max_entries:] if len(history) > max_entries else history
-
     while trimmed and trimmed[0]["role"] != "user":
         trimmed = trimmed[1:]
-
     return trimmed
 
 
+def _deserialize_history(raw: list[dict]) -> list[types.Content]:
+    """
+    Converte o histórico persistido no banco (lista de dicts) para
+    objetos types.Content que o novo SDK aceita no parâmetro history.
+
+    Formato do banco: [{"role": "user"|"model", "parts": ["texto"]}, ...]
+    Formato do SDK  : [types.Content(role=..., parts=[types.Part(text=...)]), ...]
+    """
+    result = []
+    for turn in raw:
+        parts = [types.Part(text=p) for p in turn.get("parts", [])]
+        result.append(types.Content(role=turn["role"], parts=parts))
+    return result
+
+
+def _append_turn(history: list[dict], user_message: str, model_reply: str) -> list[dict]:
+    """
+    Acrescenta um novo turno ao histórico sem depender de chat.history.
+
+    O novo SDK não garante uma propriedade pública .history no objeto Chat,
+    por isso construímos o histórico manualmente: pegamos o que já estava
+    persistido e adicionamos a nova troca (user + model).
+    """
+    return history + [
+        {"role": "user",  "parts": [user_message]},
+        {"role": "model", "parts": [model_reply]},
+    ]
+
+
 def _get_or_create_session(session_id: str, financial_context: dict, db: Session) -> dict:
-    """
-    Carrega a sessão do banco (via cache) ou cria uma nova.
-    Atualiza o system prompt se o contexto financeiro mudou.
-    """
     new_hash = _hash_context(financial_context)
     session  = repo.load_session(session_id, db)
 
@@ -104,10 +129,10 @@ def _get_or_create_session(session_id: str, financial_context: dict, db: Session
 # ──────────────────────────────────────────────
 
 @with_gemini_retry(max_retries=3, base_delay=2.0, fallback_value=_RATE_LIMIT_FALLBACK)
-def _send_message(chat, message: str) -> str:
+def _send_message(chat: genai.chats.Chat, message: str) -> str:
     """
-    Camada fina sobre chat.send_message().
-    Isolada para que o decorator de retry consiga capturar a exceção corretamente.
+    Envia uma mensagem para o chat session do novo SDK.
+    Isolada para que o decorator de retry capture a exceção corretamente.
     """
     response = chat.send_message(message)
 
@@ -125,19 +150,21 @@ def chat_with_ai(message: str, financial_context: dict, session_id: str, db: Ses
     """
     Envia uma mensagem ao Gemini e persiste o histórico no SQLite.
 
-    Fluxo:
-    1. Carrega sessão do cache ou banco
-    2. Envia mensagem ao Gemini com histórico completo
-    3. Persiste histórico atualizado no banco
-    4. Retorna resposta ao usuário
+    Diferenças do novo SDK vs. antigo:
+    - Cliente instanciado via genai.Client() — não há mais genai.configure()
+    - Chat criado via client.chats.create(model, config, history)
+    - system_instruction e temperature ficam dentro de types.GenerateContentConfig
+    - Histórico é list[types.Content] — precisa deserializar do banco antes de usar
     """
     session = _get_or_create_session(session_id, financial_context, db)
 
-    gemini_model = genai.GenerativeModel(
-        model_name="gemini-2.5-flash-lite",
-        system_instruction=session["system_prompt"],
+    chat = _client.chats.create(
+        model=MODEL_NAME,
+        config=types.GenerateContentConfig(
+            system_instruction=session["system_prompt"],
+        ),
+        history=_deserialize_history(session["history"]),
     )
-    chat = gemini_model.start_chat(history=session["history"])
 
     try:
         reply = _send_message(chat, message)
@@ -153,11 +180,7 @@ def chat_with_ai(message: str, financial_context: dict, session_id: str, db: Ses
             "Por favor, tente novamente em instantes."
         )
 
-    structured_history = [
-        {"role": turn.role, "parts": [part.text for part in turn.parts]}
-        for turn in chat.history
-    ]
-    session["history"] = _trim_history(structured_history)
+    session["history"] = _trim_history(_append_turn(session["history"], message, reply))
 
     try:
         repo.save_session(session_id, session, db)
