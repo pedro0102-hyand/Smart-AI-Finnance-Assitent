@@ -43,23 +43,22 @@ function StatCard({
   icon: React.ElementType; accent?: boolean
 }) {
   return (
-    <div className={`card flex flex-col gap-3 ${accent ? 'border-amber-500/40 bg-amber-500/5' : ''}`}>
+    <div className={`card flex flex-col gap-2 p-4 md:p-6 ${accent ? 'border-amber-500/40 bg-amber-500/5' : ''}`}>
       <div className="flex items-center justify-between">
-        <span className="label">{label}</span>
-        <div className={`flex h-8 w-8 items-center justify-center rounded-lg
+        <span className="label text-[10px] md:text-xs">{label}</span>
+        <div className={`flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-lg
           ${accent ? 'bg-amber-500/20 text-amber-500' : 'bg-[var(--bg-secondary)] text-[var(--text-muted)]'}`}>
-          <Icon size={16} />
+          <Icon size={14} />
         </div>
       </div>
       <div>
-        <p className="font-display text-2xl leading-none">{value}</p>
-        {sub && <p className="mt-1 text-xs text-[var(--text-muted)]">{sub}</p>}
+        <p className="font-display text-xl md:text-2xl leading-none">{value}</p>
+        {sub && <p className="mt-1 text-[10px] md:text-xs text-[var(--text-muted)]">{sub}</p>}
       </div>
     </div>
   )
 }
 
-// ── custom tooltip para o pie ─────────────────────────────────────────────────
 function CustomTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null
   const d = payload[0]
@@ -92,20 +91,18 @@ export default function Dashboard() {
 
   useEffect(() => { load() }, [])
 
-  // ── loading ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center gap-3 text-[var(--text-muted)]">
         <RefreshCw size={20} className="animate-spin" />
-        <span>Carregando dados financeiros…</span>
+        <span className="text-sm">Carregando dados financeiros…</span>
       </div>
     )
   }
 
-  // ── error / sem salário ───────────────────────────────────────────────────
   if (error || !summary) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+      <div className="flex flex-col items-center justify-center gap-4 py-24 text-center px-4">
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-warning/10 text-warning">
           <AlertTriangle size={28} />
         </div>
@@ -122,7 +119,7 @@ export default function Dashboard() {
     )
   }
 
-  // ── dados para gráficos ───────────────────────────────────────────────────
+  // dados para gráficos
   const categoryMap: Record<string, number> = {}
   for (const exp of summary.expenses) {
     categoryMap[exp.category] = (categoryMap[exp.category] ?? 0) + exp.amount
@@ -132,8 +129,8 @@ export default function Dashboard() {
     .sort((a, b) => b.value - a.value)
 
   const barData = summary.expenses
-    .slice(0, 8)
-    .map(e => ({ name: e.description.slice(0, 14), valor: e.amount }))
+    .slice(0, 6)  // menos itens no mobile
+    .map(e => ({ name: e.description.slice(0, 10), valor: e.amount }))
 
   const topExpenses = [...summary.expenses]
     .sort((a, b) => b.amount - a.amount)
@@ -142,13 +139,13 @@ export default function Dashboard() {
   const spent = summary.percent_spent
 
   return (
-    <div className="animate-slide-up space-y-8">
+    <div className="animate-slide-up space-y-4 md:space-y-8">
 
       {/* ── Header ────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="font-display text-3xl">Visão Geral</h1>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
+          <h1 className="font-display text-2xl md:text-3xl">Visão Geral</h1>
+          <p className="mt-1 text-xs md:text-sm text-[var(--text-muted)]">
             Resumo financeiro do mês atual
           </p>
         </div>
@@ -157,39 +154,19 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* ── Stat cards ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard
-          label="Salário"
-          value={fmt(summary.salary)}
-          icon={Wallet}
-          accent
-        />
-        <StatCard
-          label="Total de Gastos"
-          value={fmt(summary.total_expenses)}
-          sub={`${summary.percent_spent}% da renda`}
-          icon={TrendingDown}
-        />
-        <StatCard
-          label="Saldo Restante"
-          value={fmt(summary.remaining)}
-          sub={`${summary.percent_remaining}% livre`}
-          icon={TrendingUp}
-        />
-        <StatCard
-          label="Nº de Gastos"
-          value={String(summary.expenses.length)}
-          sub="registros no mês"
-          icon={ArrowUpRight}
-        />
+      {/* ── Stat cards — 2 colunas no mobile, 4 no desktop ──────────── */}
+      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
+        <StatCard label="Salário"        value={fmt(summary.salary)}          icon={Wallet}      accent />
+        <StatCard label="Total Gastos"   value={fmt(summary.total_expenses)}  sub={`${summary.percent_spent}% da renda`}   icon={TrendingDown} />
+        <StatCard label="Saldo Restante" value={fmt(summary.remaining)}       sub={`${summary.percent_remaining}% livre`}  icon={TrendingUp}   />
+        <StatCard label="Nº de Gastos"   value={String(summary.expenses.length)} sub="registros" icon={ArrowUpRight} />
       </div>
 
       {/* ── Barra de orçamento ────────────────────────────────────────── */}
-      <div className="card">
+      <div className="card p-4 md:p-6">
         <div className="mb-3 flex items-center justify-between">
-          <span className="label">Comprometimento da renda</span>
-          <span className={`font-display text-2xl ${pct(spent)}`}>
+          <span className="label text-[10px] md:text-xs">Comprometimento da renda</span>
+          <span className={`font-display text-xl md:text-2xl ${pct(spent)}`}>
             {spent}%
           </span>
         </div>
@@ -206,21 +183,21 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Gráficos ──────────────────────────────────────────────────── */}
+      {/* ── Gráficos — empilhados no mobile, lado a lado no desktop ──── */}
       {summary.expenses.length > 0 && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-3 md:gap-4 md:grid-cols-2">
 
           {/* Pie — categorias */}
-          <div className="card">
-            <p className="label mb-4">Gastos por categoria</p>
-            <ResponsiveContainer width="100%" height={220}>
+          <div className="card p-4 md:p-6">
+            <p className="label mb-4 text-[10px] md:text-xs">Gastos por categoria</p>
+            <ResponsiveContainer width="100%" height={180}>
               <PieChart>
                 <Pie
                   data={pieData}
                   cx="50%"
                   cy="50%"
-                  innerRadius={55}
-                  outerRadius={90}
+                  innerRadius={45}
+                  outerRadius={75}
                   paddingAngle={3}
                   dataKey="value"
                 >
@@ -231,34 +208,34 @@ export default function Dashboard() {
                 <Tooltip content={<CustomTooltip />} />
               </PieChart>
             </ResponsiveContainer>
-            {/* legenda manual */}
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+            {/* legenda em wrap para mobile */}
+            <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
               {pieData.map((d, i) => (
-                <div key={d.name} className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                <div key={d.name} className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
                   <span
-                    className="inline-block h-2 w-2 rounded-full"
+                    className="inline-block h-2 w-2 shrink-0 rounded-full"
                     style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
                   />
-                  {d.name}
+                  <span className="truncate max-w-[80px]">{d.name}</span>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Bar — maiores gastos */}
-          <div className="card">
-            <p className="label mb-4">Maiores gastos</p>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={barData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+          <div className="card p-4 md:p-6">
+            <p className="label mb-4 text-[10px] md:text-xs">Maiores gastos</p>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={barData} margin={{ top: 0, right: 0, left: -24, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                 <XAxis
                   dataKey="name"
-                  tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+                  tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+                  tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
                   axisLine={false}
                   tickLine={false}
                   tickFormatter={v => `R$${v}`}
@@ -269,10 +246,10 @@ export default function Dashboard() {
                     background: 'var(--bg-card)',
                     border: '1px solid var(--border)',
                     borderRadius: '0.75rem',
-                    fontSize: '0.75rem',
+                    fontSize: '0.7rem',
                   }}
                 />
-                <Bar dataKey="valor" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="valor" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -281,23 +258,22 @@ export default function Dashboard() {
 
       {/* ── Top 5 gastos ──────────────────────────────────────────────── */}
       {topExpenses.length > 0 && (
-        <div className="card">
-          <p className="label mb-4">Top 5 maiores gastos</p>
+        <div className="card p-4 md:p-6">
+          <p className="label mb-3 md:mb-4 text-[10px] md:text-xs">Top 5 maiores gastos</p>
           <div className="space-y-3">
             {topExpenses.map(exp => (
               <div key={exp.id} className="flex items-center gap-3">
-                {/* barra lateral de urgência */}
                 <div
-                  className="h-8 w-1 flex-shrink-0 rounded-full"
+                  className="h-7 w-1 flex-shrink-0 rounded-full"
                   style={{ background: URGENCY_COLOR[exp.urgency] ?? '#9ca3af' }}
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{exp.description}</p>
-                  <p className="text-xs text-[var(--text-muted)]">{exp.category}</p>
+                  <p className="truncate text-xs md:text-sm font-medium">{exp.description}</p>
+                  <p className="text-[10px] md:text-xs text-[var(--text-muted)]">{exp.category}</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold">{fmt(exp.amount)}</p>
-                  <p className="text-xs text-[var(--text-muted)]">{exp.impact_percent}%</p>
+                <div className="text-right shrink-0">
+                  <p className="text-xs md:text-sm font-semibold">{fmt(exp.amount)}</p>
+                  <p className="text-[10px] md:text-xs text-[var(--text-muted)]">{exp.impact_percent}%</p>
                 </div>
               </div>
             ))}
@@ -307,17 +283,16 @@ export default function Dashboard() {
 
       {/* ── Sugestão da IA ────────────────────────────────────────────── */}
       {summary.suggestion && (
-        <div className="card border-amber-500/30 bg-amber-500/5">
+        <div className="card border-amber-500/30 bg-amber-500/5 p-4 md:p-6">
           <div className="mb-3 flex items-center gap-2">
-            <Sparkles size={16} className="text-amber-500" />
-            <span className="label text-amber-500">Sugestão da IA</span>
+            <Sparkles size={15} className="text-amber-500 shrink-0" />
+            <span className="label text-[10px] md:text-xs text-amber-500">Sugestão da IA</span>
           </div>
-          <p className="text-sm leading-relaxed text-[var(--text-primary)] whitespace-pre-line">
+          <p className="text-xs md:text-sm leading-relaxed text-[var(--text-primary)] whitespace-pre-line">
             {summary.suggestion}
           </p>
         </div>
       )}
-
     </div>
   )
 }

@@ -33,10 +33,7 @@ interface FormData { description: string; amount: string; category: string }
 const EMPTY: FormData = { description: '', amount: '', category: '' }
 
 function ExpenseModal({
-  initial,
-  onSave,
-  onClose,
-  loading,
+  initial, onSave, onClose, loading,
 }: {
   initial?: Expense | null
   onSave: (data: FormData) => void
@@ -49,35 +46,43 @@ function ExpenseModal({
       : EMPTY
   )
   const [errors, setErrors] = useState<Partial<FormData>>({})
+  const [customCategory, setCustomCategory] = useState('')
 
   function validate() {
     const e: Partial<FormData> = {}
     if (!form.description.trim()) e.description = 'Descrição obrigatória'
     if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0)
       e.amount = 'Valor inválido'
-    if (!form.category.trim()) e.category = 'Categoria obrigatória'
+    const cat = form.category === '__custom' ? customCategory : form.category
+    if (!cat.trim()) e.category = 'Categoria obrigatória'
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
   function handleSubmit() {
-    if (validate()) onSave(form)
+    if (validate()) {
+      onSave({
+        ...form,
+        category: form.category === '__custom' ? customCategory : form.category,
+      })
+    }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center p-4">
-      <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-2xl animate-slide-up">
+    /* slide up do bottom em mobile, centralizado em desktop */
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center p-0 sm:p-4">
+      <div className="w-full max-w-md rounded-t-2xl sm:rounded-2xl border border-[var(--border)]
+                      bg-[var(--bg-card)] p-5 shadow-2xl animate-slide-up">
+
+        {/* drag handle no mobile */}
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[var(--border)] sm:hidden" />
+
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="font-display text-xl">
-            {initial ? 'Editar gasto' : 'Novo gasto'}
-          </h2>
-          <button onClick={onClose} className="btn-ghost p-1.5">
-            <X size={18} />
-          </button>
+          <h2 className="font-display text-xl">{initial ? 'Editar gasto' : 'Novo gasto'}</h2>
+          <button onClick={onClose} className="btn-ghost p-1.5"><X size={18} /></button>
         </div>
 
         <div className="space-y-4">
-          {/* Descrição */}
           <div>
             <label className="label">Descrição</label>
             <input
@@ -86,29 +91,24 @@ function ExpenseModal({
               value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
             />
-            {errors.description && (
-              <p className="mt-1 text-xs text-danger">{errors.description}</p>
-            )}
+            {errors.description && <p className="mt-1 text-xs text-danger">{errors.description}</p>}
           </div>
 
-          {/* Valor */}
           <div>
             <label className="label">Valor (R$)</label>
             <input
               className="input"
               type="number"
+              inputMode="decimal"
               min="0.01"
               step="0.01"
               placeholder="0,00"
               value={form.amount}
               onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
             />
-            {errors.amount && (
-              <p className="mt-1 text-xs text-danger">{errors.amount}</p>
-            )}
+            {errors.amount && <p className="mt-1 text-xs text-danger">{errors.amount}</p>}
           </div>
 
-          {/* Categoria */}
           <div>
             <label className="label">Categoria</label>
             <select
@@ -117,37 +117,25 @@ function ExpenseModal({
               onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
             >
               <option value="">Selecione…</option>
-              {CATEGORIES.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
+              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               <option value="__custom">Outra (digitar)</option>
             </select>
             {form.category === '__custom' && (
               <input
                 className="input mt-2"
                 placeholder="Digite a categoria"
-                onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                value={customCategory}
+                onChange={e => setCustomCategory(e.target.value)}
               />
             )}
-            {errors.category && (
-              <p className="mt-1 text-xs text-danger">{errors.category}</p>
-            )}
+            {errors.category && <p className="mt-1 text-xs text-danger">{errors.category}</p>}
           </div>
         </div>
 
         <div className="mt-6 flex gap-3">
-          <button onClick={onClose} className="btn-ghost flex-1 justify-center">
-            Cancelar
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="btn-primary flex-1 justify-center"
-          >
-            {loading
-              ? <RefreshCw size={15} className="animate-spin" />
-              : <Check size={15} />
-            }
+          <button onClick={onClose} className="btn-ghost flex-1 justify-center">Cancelar</button>
+          <button onClick={handleSubmit} disabled={loading} className="btn-primary flex-1 justify-center">
+            {loading ? <RefreshCw size={15} className="animate-spin" /> : <Check size={15} />}
             {initial ? 'Salvar' : 'Adicionar'}
           </button>
         </div>
@@ -157,20 +145,14 @@ function ExpenseModal({
 }
 
 // ── confirm delete ────────────────────────────────────────────────────────────
-function ConfirmModal({
-  message,
-  onConfirm,
-  onClose,
-  loading,
-}: {
-  message: string
-  onConfirm: () => void
-  onClose: () => void
-  loading: boolean
+function ConfirmModal({ message, onConfirm, onClose, loading }: {
+  message: string; onConfirm: () => void; onClose: () => void; loading: boolean
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-2xl animate-slide-up">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center p-0 sm:p-4">
+      <div className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl border border-[var(--border)]
+                      bg-[var(--bg-card)] p-5 shadow-2xl animate-slide-up">
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[var(--border)] sm:hidden" />
         <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-danger/10 text-danger">
           <AlertTriangle size={22} />
         </div>
@@ -178,11 +160,7 @@ function ConfirmModal({
         <p className="mt-1 text-sm text-[var(--text-muted)]">{message}</p>
         <div className="mt-5 flex gap-3">
           <button onClick={onClose} className="btn-ghost flex-1 justify-center">Cancelar</button>
-          <button
-            onClick={onConfirm}
-            disabled={loading}
-            className="btn-danger flex-1 justify-center"
-          >
+          <button onClick={onConfirm} disabled={loading} className="btn-danger flex-1 justify-center">
             {loading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
             Excluir
           </button>
@@ -194,17 +172,15 @@ function ConfirmModal({
 
 // ── main ──────────────────────────────────────────────────────────────────────
 export default function Expenses() {
-  const [expenses, setExpenses]     = useState<Expense[]>([])
-  const [loading, setLoading]       = useState(true)
-  const [saving, setSaving]         = useState(false)
-  const [error, setError]           = useState<string | null>(null)
-
-  const [showAdd, setShowAdd]       = useState(false)
-  const [editing, setEditing]       = useState<Expense | null>(null)
-  const [deleting, setDeleting]     = useState<Expense | null>(null)
-  const [deletingAll, setDeletingAll] = useState(false)
-
-  const [search, setSearch]         = useState('')
+  const [expenses, setExpenses]         = useState<Expense[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [saving, setSaving]             = useState(false)
+  const [error, setError]               = useState<string | null>(null)
+  const [showAdd, setShowAdd]           = useState(false)
+  const [editing, setEditing]           = useState<Expense | null>(null)
+  const [deleting, setDeleting]         = useState<Expense | null>(null)
+  const [deletingAll, setDeletingAll]   = useState(false)
+  const [search, setSearch]             = useState('')
   const [filterUrgency, setFilterUrgency] = useState<string>('all')
 
   async function load() {
@@ -268,37 +244,36 @@ export default function Expenses() {
     finally { setSaving(false) }
   }
 
-  // ── filter ──────────────────────────────────────────────────────────────
   const filtered = expenses.filter(e => {
     const matchSearch =
       e.description.toLowerCase().includes(search.toLowerCase()) ||
       e.category.toLowerCase().includes(search.toLowerCase())
-    const matchUrgency =
-      filterUrgency === 'all' || e.urgency === filterUrgency
+    const matchUrgency = filterUrgency === 'all' || e.urgency === filterUrgency
     return matchSearch && matchUrgency
   })
 
   const total = filtered.reduce((s, e) => s + e.amount, 0)
 
   return (
-    <div className="animate-slide-up space-y-6">
+    <div className="animate-slide-up space-y-4 md:space-y-6">
 
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      {/* ── Header — empilha no mobile ───────────────────────────────── */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="font-display text-3xl">Gastos</h1>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
+          <h1 className="font-display text-2xl md:text-3xl">Gastos</h1>
+          <p className="mt-1 text-xs md:text-sm text-[var(--text-muted)]">
             {expenses.length} registro{expenses.length !== 1 ? 's' : ''} no mês
           </p>
         </div>
-        <div className="flex gap-2">
+        {/* botões lado a lado no mobile */}
+        <div className="flex gap-2 self-stretch sm:self-auto">
           {expenses.length > 0 && (
-            <button onClick={() => setDeletingAll(true)} className="btn-danger">
-              <Trash2 size={15} /> Zerar mês
+            <button onClick={() => setDeletingAll(true)} className="btn-danger flex-1 sm:flex-none justify-center">
+              <Trash2 size={14} /> <span className="sm:inline">Zerar mês</span>
             </button>
           )}
-          <button onClick={() => setShowAdd(true)} className="btn-primary">
-            <Plus size={15} /> Novo gasto
+          <button onClick={() => setShowAdd(true)} className="btn-primary flex-1 sm:flex-none justify-center">
+            <Plus size={14} /> Novo gasto
           </button>
         </div>
       </div>
@@ -306,27 +281,27 @@ export default function Expenses() {
       {/* ── Error banner ────────────────────────────────────────────── */}
       {error && (
         <div className="flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-          <AlertTriangle size={16} />
-          {error}
-          <button onClick={() => setError(null)} className="ml-auto"><X size={14} /></button>
+          <AlertTriangle size={16} className="shrink-0" />
+          <span className="flex-1 text-xs md:text-sm">{error}</span>
+          <button onClick={() => setError(null)}><X size={14} /></button>
         </div>
       )}
 
-      {/* ── Search + filter ─────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-48">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+      {/* ── Search + filter — empilha no mobile ──────────────────────── */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+        <div className="relative flex-1">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
-            className="input pl-9"
-            placeholder="Buscar por descrição ou categoria…"
+            className="input pl-9 text-sm"
+            placeholder="Buscar…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
         </div>
         <div className="relative">
-          <Filter size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+          <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <select
-            className="input pl-9 pr-8 appearance-none"
+            className="input pl-9 pr-8 appearance-none text-sm w-full sm:w-auto"
             value={filterUrgency}
             onChange={e => setFilterUrgency(e.target.value)}
           >
@@ -341,13 +316,14 @@ export default function Expenses() {
       {/* ── Loading ─────────────────────────────────────────────────── */}
       {loading && (
         <div className="flex h-48 items-center justify-center gap-2 text-[var(--text-muted)]">
-          <RefreshCw size={18} className="animate-spin" /> Carregando…
+          <RefreshCw size={18} className="animate-spin" />
+          <span className="text-sm">Carregando…</span>
         </div>
       )}
 
       {/* ── Empty state ─────────────────────────────────────────────── */}
       {!loading && expenses.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
+        <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--bg-secondary)] text-[var(--text-muted)]">
             <Plus size={28} />
           </div>
@@ -361,7 +337,7 @@ export default function Expenses() {
         </div>
       )}
 
-      {/* ── List ────────────────────────────────────────────────────── */}
+      {/* ── Lista ───────────────────────────────────────────────────── */}
       {!loading && filtered.length > 0 && (
         <>
           <div className="card p-0 overflow-hidden">
@@ -369,43 +345,47 @@ export default function Expenses() {
               {filtered.map(exp => (
                 <div
                   key={exp.id}
-                  className="flex items-center gap-3 px-5 py-4 hover:bg-[var(--bg-secondary)] transition-colors"
+                  className="flex items-center gap-2.5 px-4 py-3.5 md:px-5 md:py-4
+                             hover:bg-[var(--bg-secondary)] transition-colors"
                 >
-                  {/* dot */}
-                  <div className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${URGENCY_DOT[exp.urgency] ?? 'bg-[var(--text-muted)]'}`} />
+                  {/* dot urgência */}
+                  <div className={`h-2 w-2 shrink-0 rounded-full ${URGENCY_DOT[exp.urgency] ?? 'bg-[var(--text-muted)]'}`} />
 
                   {/* info */}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{exp.description}</p>
-                    <div className="mt-0.5 flex items-center gap-2">
-                      <span className="text-xs text-[var(--text-muted)]">{exp.category}</span>
-                      <span className={`text-[10px] ${URGENCY_COLOR[exp.urgency] ?? ''}`}>
+                    <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] text-[var(--text-muted)]">{exp.category}</span>
+                      {/* badge de urgência — oculto em telas muito pequenas */}
+                      <span className={`hidden xs:inline text-[9px] ${URGENCY_COLOR[exp.urgency] ?? ''}`}>
                         {exp.urgency}
                       </span>
                     </div>
                   </div>
 
-                  {/* amount */}
+                  {/* valor */}
                   <div className="text-right shrink-0">
                     <p className="text-sm font-semibold">{fmt(exp.amount)}</p>
-                    <p className="text-xs text-[var(--text-muted)]">{exp.impact_percent}% da renda</p>
+                    <p className="text-[10px] text-[var(--text-muted)]">{exp.impact_percent}%</p>
                   </div>
 
-                  {/* actions */}
-                  <div className="flex gap-1 shrink-0">
+                  {/* ações — ícones menores no mobile */}
+                  <div className="flex gap-0.5 shrink-0">
                     <button
                       onClick={() => setEditing(exp)}
-                      className="btn-ghost p-1.5 text-[var(--text-muted)]"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg
+                                 text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] transition-colors"
                       aria-label="Editar"
                     >
-                      <Pencil size={14} />
+                      <Pencil size={13} />
                     </button>
                     <button
                       onClick={() => setDeleting(exp)}
-                      className="btn-ghost p-1.5 text-danger/70 hover:text-danger"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg
+                                 text-danger/60 hover:bg-danger/10 hover:text-danger transition-colors"
                       aria-label="Excluir"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={13} />
                     </button>
                   </div>
                 </div>
@@ -413,39 +393,27 @@ export default function Expenses() {
             </div>
           </div>
 
-          {/* total da busca */}
-          <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-5 py-3">
-            <span className="text-sm text-[var(--text-muted)]">
+          {/* total */}
+          <div className="flex items-center justify-between rounded-xl border border-[var(--border)]
+                          bg-[var(--bg-secondary)] px-4 md:px-5 py-3">
+            <span className="text-xs md:text-sm text-[var(--text-muted)]">
               {filtered.length} gasto{filtered.length !== 1 ? 's' : ''} filtrados
             </span>
-            <span className="font-display text-lg">{fmt(total)}</span>
+            <span className="font-display text-base md:text-lg">{fmt(total)}</span>
           </div>
         </>
       )}
 
-      {/* ── No results from search ──────────────────────────────────── */}
+      {/* ── Sem resultado de busca ───────────────────────────────────── */}
       {!loading && expenses.length > 0 && filtered.length === 0 && (
-        <div className="py-12 text-center text-[var(--text-muted)]">
-          <p>Nenhum resultado para "<strong>{search}</strong>"</p>
+        <div className="py-12 text-center text-sm text-[var(--text-muted)]">
+          Nenhum resultado para "<strong>{search}</strong>"
         </div>
       )}
 
       {/* ── Modals ──────────────────────────────────────────────────── */}
-      {showAdd && (
-        <ExpenseModal
-          onSave={handleAdd}
-          onClose={() => setShowAdd(false)}
-          loading={saving}
-        />
-      )}
-      {editing && (
-        <ExpenseModal
-          initial={editing}
-          onSave={handleEdit}
-          onClose={() => setEditing(null)}
-          loading={saving}
-        />
-      )}
+      {showAdd  && <ExpenseModal onSave={handleAdd}  onClose={() => setShowAdd(false)}  loading={saving} />}
+      {editing  && <ExpenseModal initial={editing}   onSave={handleEdit} onClose={() => setEditing(null)} loading={saving} />}
       {deleting && (
         <ConfirmModal
           message={`Excluir "${deleting.description}" (${fmt(deleting.amount)})?`}
