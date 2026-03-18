@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import {
   MessageSquare, Send, Trash2, RefreshCw,
   X, AlertTriangle, Bot, User, Sparkles,
-  ChevronRight,
+  ChevronRight, WifiOff, ServerCrash,
 } from 'lucide-react'
-import { chatApi } from '../services/api'
+import { chatApi, friendlyErrorMessage, NetworkError, ServerError } from '../services/api'
 import type { ChatMessage } from '../types'
 
 // ── session id persistido no localStorage ─────────────────────────────────────
@@ -69,6 +69,65 @@ function renderContent(text: string) {
       />
     )
   })
+}
+
+// ── tipo de erro detectado ────────────────────────────────────────────────────
+type ErrorKind = 'network' | 'server' | 'generic'
+
+function getErrorKind(error: unknown): ErrorKind {
+  if (error instanceof NetworkError) return 'network'
+  if (error instanceof ServerError)  return 'server'
+  return 'generic'
+}
+
+// ── banner de erro rico ───────────────────────────────────────────────────────
+function ErrorBanner({
+  message,
+  kind,
+  onRetry,
+  onDismiss,
+}: {
+  message: string
+  kind: ErrorKind
+  onRetry?: () => void
+  onDismiss: () => void
+}) {
+  const isNetwork = kind === 'network'
+  const Icon = isNetwork ? WifiOff : kind === 'server' ? ServerCrash : AlertTriangle
+
+  return (
+    <div className={`
+      flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shrink-0
+      ${isNetwork
+        ? 'border-warning/30 bg-warning/10 text-warning'
+        : 'border-danger/30 bg-danger/10 text-danger'
+      }
+    `}>
+      <Icon size={15} className="shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="font-medium leading-snug">{message}</p>
+        {isNetwork && (
+          <p className="mt-0.5 text-xs opacity-80">
+            Verifique se o backend está rodando em <code className="font-mono">localhost:8000</code>
+          </p>
+        )}
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            className="rounded-lg px-2.5 py-1 text-xs font-medium
+                       bg-black/10 hover:bg-black/20 transition-colors"
+          >
+            Tentar novamente
+          </button>
+        )}
+        <button onClick={onDismiss} className="opacity-60 hover:opacity-100 transition-opacity">
+          <X size={14} />
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // ── bolha de mensagem ─────────────────────────────────────────────────────────
@@ -142,7 +201,6 @@ function EmptyState({ onSuggest }: { onSuggest: (s: string) => void }) {
         </p>
       </div>
 
-      {/* grid 1 coluna no mobile, 2 no desktop */}
       <div className="w-full max-w-lg px-1">
         <p className="mb-3 text-[10px] md:text-xs font-medium uppercase tracking-widest text-[var(--text-muted)]">
           Sugestões para começar
@@ -174,6 +232,8 @@ export default function Chat() {
   const [input, setInput]               = useState('')
   const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState<string | null>(null)
+  const [errorKind, setErrorKind]       = useState<ErrorKind>('generic')
+  const [lastMessage, setLastMessage]   = useState<string | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [sessionId]                     = useState(getOrCreateSessionId)
 
@@ -198,6 +258,7 @@ export default function Chat() {
     setMessages(prev => [...prev, userMsg])
     setInput('')
     setError(null)
+    setLastMessage(content)
     setLoading(true)
 
     if (inputRef.current) inputRef.current.style.height = 'auto'
@@ -209,13 +270,22 @@ export default function Chat() {
         content: res.response,
         timestamp: new Date(),
       }])
-    } catch (e: any) {
-      setError(e.message ?? 'Erro ao enviar mensagem')
+      setLastMessage(null)
+    } catch (e: unknown) {
+      setError(friendlyErrorMessage(e))
+      setErrorKind(getErrorKind(e))
+      // remove a mensagem do usuário que falhou
       setMessages(prev => prev.slice(0, -1))
     } finally {
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 50)
     }
+  }
+
+  async function retryLastMessage() {
+    if (!lastMessage) return
+    setError(null)
+    await sendMessage(lastMessage)
   }
 
   async function clearHistory() {
@@ -224,8 +294,10 @@ export default function Chat() {
       setMessages([])
       setConfirmClear(false)
       setError(null)
-    } catch (e: any) {
-      setError(e.message ?? 'Erro ao limpar histórico')
+      setLastMessage(null)
+    } catch (e: unknown) {
+      setError(friendlyErrorMessage(e))
+      setErrorKind(getErrorKind(e))
       setConfirmClear(false)
     }
   }
@@ -240,16 +312,9 @@ export default function Chat() {
   const hasMessages = messages.length > 0
 
   return (
-    /*
-     * Usa flex column + 100dvh descontando o header mobile (52px) e bottom nav (57px).
-     * No desktop o layout já gerencia a altura via flex-1 no <main>.
-     */
     <div className="animate-fade-in flex flex-col"
          style={{ height: 'calc(100dvh - 52px - 57px - 1.5rem)' }}
-         /* Em md+ o <main> tem overflow-y-auto e padding próprio, então a altura satura corretamente */
     >
-
-      {/* Wrapper interno que no desktop usa a altura do flex pai */}
       <div className="flex flex-col flex-1 min-h-0 md:h-full">
 
         {/* ── Header ──────────────────────────────────────────────────── */}
@@ -271,12 +336,15 @@ export default function Chat() {
           )}
         </div>
 
-        {/* ── Error banner ────────────────────────────────────────────── */}
+        {/* ── Error banner rico ────────────────────────────────────────── */}
         {error && (
-          <div className="mb-2 flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2.5 text-xs text-danger shrink-0">
-            <AlertTriangle size={14} className="shrink-0" />
-            <span className="flex-1">{error}</span>
-            <button onClick={() => setError(null)}><X size={13} /></button>
+          <div className="mb-2 shrink-0">
+            <ErrorBanner
+              message={error}
+              kind={errorKind}
+              onRetry={lastMessage ? retryLastMessage : undefined}
+              onDismiss={() => setError(null)}
+            />
           </div>
         )}
 
@@ -294,7 +362,7 @@ export default function Chat() {
           }
         </div>
 
-        {/* ── Chips rápidos (quando há mensagens) ─────────────────────── */}
+        {/* ── Chips rápidos ────────────────────────────────────────────── */}
         {hasMessages && !loading && (
           <div className="mt-2 flex gap-2 overflow-x-auto pb-0.5 shrink-0"
                style={{ scrollbarWidth: 'none' }}>

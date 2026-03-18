@@ -4,6 +4,7 @@ import {
   Clock, CheckCircle2, AlertTriangle, X,
 } from 'lucide-react'
 import { salaryApi } from '../services/api'
+import { useToast } from '../context/ToastContext'
 import type { Salary } from '../types'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -92,11 +93,13 @@ function SalaryModal({
 
 // ── main ──────────────────────────────────────────────────────────────────────
 export default function Salary() {
-  const [current, setCurrent]   = useState<Salary | null>(null)
-  const [history, setHistory]   = useState<Salary[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [saving, setSaving]     = useState(false)
-  const [error, setError]       = useState<string | null>(null)
+  const toast = useToast()
+
+  const [current, setCurrent]     = useState<Salary | null>(null)
+  const [history, setHistory]     = useState<Salary[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
 
   async function load() {
@@ -124,14 +127,15 @@ export default function Salary() {
       setCurrent(created)
       setHistory(prev => [created, ...prev.map(s => ({ ...s, is_current: false }))])
       setShowModal(false)
+      toast.success(`Salário de ${fmt(amount)} cadastrado com sucesso!`)
     } catch (e: any) {
       setError(e.message)
+      toast.error('Erro ao salvar salário. Tente novamente.')
     } finally {
       setSaving(false)
     }
   }
 
-  // variação em relação ao salário anterior
   const previous = history.find(s => !s.is_current)
   const variation = current && previous
     ? variationPct(current.amount, previous.amount)
@@ -203,7 +207,6 @@ export default function Salary() {
               </p>
             </div>
 
-            {/* variação */}
             {variation !== null && (
               <div className={`flex flex-col items-end gap-1 shrink-0 ${variation >= 0 ? 'text-success' : 'text-danger'}`}>
                 <div className="flex items-center gap-1">
@@ -220,7 +223,6 @@ export default function Salary() {
             )}
           </div>
 
-          {/* barra visual do salário — referência de 10k */}
           <div className="mt-5">
             <div className="mb-1.5 flex justify-between text-xs text-[var(--text-muted)]">
               <span>R$ 0</span>
@@ -251,7 +253,6 @@ export default function Salary() {
 
               return (
                 <div key={s.id} className="flex items-center gap-4 py-3.5">
-                  {/* ícone status */}
                   <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg
                     ${s.is_current
                       ? 'bg-amber-500/10 text-amber-500'
@@ -260,7 +261,6 @@ export default function Salary() {
                     <Wallet size={15} />
                   </div>
 
-                  {/* valor + data */}
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm font-semibold ${s.is_current ? 'text-amber-500' : ''}`}>
                       {fmt(s.amount)}
@@ -268,7 +268,6 @@ export default function Salary() {
                     <p className="text-xs text-[var(--text-muted)]">{fmtDate(s.created_at)}</p>
                   </div>
 
-                  {/* variação */}
                   {vari !== null && (
                     <div className={`flex items-center gap-1 text-xs font-medium
                       ${vari >= 0 ? 'text-success' : 'text-danger'}`}>
@@ -277,7 +276,6 @@ export default function Salary() {
                     </div>
                   )}
 
-                  {/* badge */}
                   {s.is_current && (
                     <span className="shrink-0 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-500">
                       Atual

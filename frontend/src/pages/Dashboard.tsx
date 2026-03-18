@@ -35,6 +35,139 @@ function barColor(v: number) {
   return 'bg-danger'
 }
 
+// ── skeleton primitivo ────────────────────────────────────────────────────────
+function Bone({ className = '' }: { className?: string }) {
+  return (
+    <div
+      className={`rounded-lg bg-[var(--bg-secondary)] ${className}`}
+      style={{
+        animation: 'skeletonPulse 1.6s ease-in-out infinite',
+      }}
+    />
+  )
+}
+
+// ── skeleton do dashboard ─────────────────────────────────────────────────────
+function DashboardSkeleton() {
+  return (
+    <>
+      <style>{`
+        @keyframes skeletonPulse {
+          0%, 100% { opacity: 1; }
+          50%       { opacity: 0.4; }
+        }
+      `}</style>
+
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div className="space-y-2">
+          <Bone className="h-8 w-40" />
+          <Bone className="h-4 w-56" />
+        </div>
+        <Bone className="h-9 w-9 rounded-xl" />
+      </div>
+
+      {/* Stat cards — 2 colunas no mobile, 4 no desktop */}
+      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="card flex flex-col gap-3 p-4 md:p-6">
+            <div className="flex items-center justify-between">
+              <Bone className="h-3 w-20" />
+              <Bone className="h-7 w-7 md:h-8 md:w-8 rounded-lg" />
+            </div>
+            <div className="space-y-1.5">
+              <Bone className="h-7 w-28" />
+              <Bone className="h-3 w-20" />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Barra de orçamento */}
+      <div className="card p-4 md:p-6 space-y-3">
+        <div className="flex items-center justify-between">
+          <Bone className="h-3 w-44" />
+          <Bone className="h-8 w-14" />
+        </div>
+        <Bone className="h-3 w-full rounded-full" />
+        <div className="flex justify-between">
+          <Bone className="h-3 w-6" />
+          <Bone className="h-3 w-20" />
+          <Bone className="h-3 w-8" />
+        </div>
+      </div>
+
+      {/* Gráficos lado a lado */}
+      <div className="grid gap-3 md:gap-4 md:grid-cols-2">
+        {/* Pie skeleton */}
+        <div className="card p-4 md:p-6 space-y-4">
+          <Bone className="h-3 w-36" />
+          <div className="flex items-center justify-center">
+            <Bone className="h-[180px] w-[180px] rounded-full" />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Bone key={i} className="h-3 w-16" />
+            ))}
+          </div>
+        </div>
+
+        {/* Bar skeleton */}
+        <div className="card p-4 md:p-6 space-y-4">
+          <Bone className="h-3 w-28" />
+          <div className="flex items-end justify-between gap-2 h-[180px] px-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Bone
+                key={i}
+                className="flex-1 rounded-t-md rounded-b-none"
+                style={{
+                  height: `${30 + Math.sin(i * 1.2) * 40 + 60}px`,
+                  animationDelay: `${i * 80}ms`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Top 5 gastos */}
+      <div className="card p-4 md:p-6 space-y-4">
+        <Bone className="h-3 w-28" />
+        <div className="space-y-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Bone className="h-7 w-1 rounded-full flex-shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <Bone className="h-3.5" style={{ width: `${60 + (i % 3) * 15}%`, animationDelay: `${i * 60}ms` }} />
+                <Bone className="h-3 w-20" style={{ animationDelay: `${i * 60 + 30}ms` }} />
+              </div>
+              <div className="text-right space-y-1.5 shrink-0">
+                <Bone className="h-3.5 w-16" style={{ animationDelay: `${i * 60}ms` }} />
+                <Bone className="h-3 w-8 ml-auto" style={{ animationDelay: `${i * 60 + 30}ms` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Sugestão da IA */}
+      <div className="card p-4 md:p-6 space-y-3">
+        <div className="flex items-center gap-2">
+          <Bone className="h-4 w-4 rounded-full" />
+          <Bone className="h-3 w-24" />
+        </div>
+        <div className="space-y-2">
+          <Bone className="h-3 w-full" />
+          <Bone className="h-3 w-full" />
+          <Bone className="h-3 w-4/5" />
+          <Bone className="h-3 w-full" />
+          <Bone className="h-3 w-3/5" />
+        </div>
+      </div>
+    </>
+  )
+}
+
 // ── sub-components ────────────────────────────────────────────────────────────
 function StatCard({
   label, value, sub, icon: Icon, accent = false,
@@ -91,15 +224,16 @@ export default function Dashboard() {
 
   useEffect(() => { load() }, [])
 
+  // ── loading: skeletons no lugar do spinner ────────────────────────────────
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center gap-3 text-[var(--text-muted)]">
-        <RefreshCw size={20} className="animate-spin" />
-        <span className="text-sm">Carregando dados financeiros…</span>
+      <div className="animate-fade-in space-y-4 md:space-y-8">
+        <DashboardSkeleton />
       </div>
     )
   }
 
+  // ── erro ──────────────────────────────────────────────────────────────────
   if (error || !summary) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-24 text-center px-4">
@@ -119,7 +253,7 @@ export default function Dashboard() {
     )
   }
 
-  // dados para gráficos
+  // ── dados para gráficos ───────────────────────────────────────────────────
   const categoryMap: Record<string, number> = {}
   for (const exp of summary.expenses) {
     categoryMap[exp.category] = (categoryMap[exp.category] ?? 0) + exp.amount
@@ -129,7 +263,7 @@ export default function Dashboard() {
     .sort((a, b) => b.value - a.value)
 
   const barData = summary.expenses
-    .slice(0, 6)  // menos itens no mobile
+    .slice(0, 6)
     .map(e => ({ name: e.description.slice(0, 10), valor: e.amount }))
 
   const topExpenses = [...summary.expenses]
@@ -154,15 +288,15 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* ── Stat cards — 2 colunas no mobile, 4 no desktop ──────────── */}
+      {/* ── Stat cards ───────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
-        <StatCard label="Salário"        value={fmt(summary.salary)}          icon={Wallet}      accent />
-        <StatCard label="Total Gastos"   value={fmt(summary.total_expenses)}  sub={`${summary.percent_spent}% da renda`}   icon={TrendingDown} />
-        <StatCard label="Saldo Restante" value={fmt(summary.remaining)}       sub={`${summary.percent_remaining}% livre`}  icon={TrendingUp}   />
-        <StatCard label="Nº de Gastos"   value={String(summary.expenses.length)} sub="registros" icon={ArrowUpRight} />
+        <StatCard label="Salário"        value={fmt(summary.salary)}             icon={Wallet}       accent />
+        <StatCard label="Total Gastos"   value={fmt(summary.total_expenses)}     sub={`${summary.percent_spent}% da renda`}  icon={TrendingDown} />
+        <StatCard label="Saldo Restante" value={fmt(summary.remaining)}          sub={`${summary.percent_remaining}% livre`} icon={TrendingUp}   />
+        <StatCard label="Nº de Gastos"   value={String(summary.expenses.length)} sub="registros"                             icon={ArrowUpRight} />
       </div>
 
-      {/* ── Barra de orçamento ────────────────────────────────────────── */}
+      {/* ── Barra de orçamento ───────────────────────────────────────── */}
       <div className="card p-4 md:p-6">
         <div className="mb-3 flex items-center justify-between">
           <span className="label text-[10px] md:text-xs">Comprometimento da renda</span>
@@ -183,11 +317,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Gráficos — empilhados no mobile, lado a lado no desktop ──── */}
+      {/* ── Gráficos ─────────────────────────────────────────────────── */}
       {summary.expenses.length > 0 && (
         <div className="grid gap-3 md:gap-4 md:grid-cols-2">
 
-          {/* Pie — categorias */}
+          {/* Pie */}
           <div className="card p-4 md:p-6">
             <p className="label mb-4 text-[10px] md:text-xs">Gastos por categoria</p>
             <ResponsiveContainer width="100%" height={180}>
@@ -208,7 +342,6 @@ export default function Dashboard() {
                 <Tooltip content={<CustomTooltip />} />
               </PieChart>
             </ResponsiveContainer>
-            {/* legenda em wrap para mobile */}
             <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
               {pieData.map((d, i) => (
                 <div key={d.name} className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
@@ -222,7 +355,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Bar — maiores gastos */}
+          {/* Bar */}
           <div className="card p-4 md:p-6">
             <p className="label mb-4 text-[10px] md:text-xs">Maiores gastos</p>
             <ResponsiveContainer width="100%" height={180}>
@@ -256,7 +389,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Top 5 gastos ──────────────────────────────────────────────── */}
+      {/* ── Top 5 gastos ─────────────────────────────────────────────── */}
       {topExpenses.length > 0 && (
         <div className="card p-4 md:p-6">
           <p className="label mb-3 md:mb-4 text-[10px] md:text-xs">Top 5 maiores gastos</p>

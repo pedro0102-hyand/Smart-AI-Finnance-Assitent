@@ -4,6 +4,7 @@ import {
   AlertTriangle, Search, Filter,
 } from 'lucide-react'
 import { expensesApi } from '../services/api'
+import { useToast } from '../context/ToastContext'
 import type { Expense, ExpenseCreate, ExpenseUpdate } from '../types'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -69,12 +70,10 @@ function ExpenseModal({
   }
 
   return (
-    /* slide up do bottom em mobile, centralizado em desktop */
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center p-0 sm:p-4">
       <div className="w-full max-w-md rounded-t-2xl sm:rounded-2xl border border-[var(--border)]
                       bg-[var(--bg-card)] p-5 shadow-2xl animate-slide-up">
 
-        {/* drag handle no mobile */}
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[var(--border)] sm:hidden" />
 
         <div className="mb-5 flex items-center justify-between">
@@ -172,15 +171,17 @@ function ConfirmModal({ message, onConfirm, onClose, loading }: {
 
 // ── main ──────────────────────────────────────────────────────────────────────
 export default function Expenses() {
-  const [expenses, setExpenses]         = useState<Expense[]>([])
-  const [loading, setLoading]           = useState(true)
-  const [saving, setSaving]             = useState(false)
-  const [error, setError]               = useState<string | null>(null)
-  const [showAdd, setShowAdd]           = useState(false)
-  const [editing, setEditing]           = useState<Expense | null>(null)
-  const [deleting, setDeleting]         = useState<Expense | null>(null)
-  const [deletingAll, setDeletingAll]   = useState(false)
-  const [search, setSearch]             = useState('')
+  const toast = useToast()
+
+  const [expenses, setExpenses]           = useState<Expense[]>([])
+  const [loading, setLoading]             = useState(true)
+  const [saving, setSaving]               = useState(false)
+  const [error, setError]                 = useState<string | null>(null)
+  const [showAdd, setShowAdd]             = useState(false)
+  const [editing, setEditing]             = useState<Expense | null>(null)
+  const [deleting, setDeleting]           = useState<Expense | null>(null)
+  const [deletingAll, setDeletingAll]     = useState(false)
+  const [search, setSearch]               = useState('')
   const [filterUrgency, setFilterUrgency] = useState<string>('all')
 
   async function load() {
@@ -203,8 +204,13 @@ export default function Expenses() {
       const created = await expensesApi.create(data)
       setExpenses(prev => [created, ...prev])
       setShowAdd(false)
-    } catch (e: any) { setError(e.message) }
-    finally { setSaving(false) }
+      toast.success(`Gasto "${created.description}" adicionado com sucesso!`)
+    } catch (e: any) {
+      setError(e.message)
+      toast.error('Erro ao adicionar gasto. Tente novamente.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleEdit(form: FormData) {
@@ -219,8 +225,13 @@ export default function Expenses() {
       const updated = await expensesApi.update(editing.id, data)
       setExpenses(prev => prev.map(e => e.id === updated.id ? updated : e))
       setEditing(null)
-    } catch (e: any) { setError(e.message) }
-    finally { setSaving(false) }
+      toast.success(`Gasto "${updated.description}" atualizado com sucesso!`)
+    } catch (e: any) {
+      setError(e.message)
+      toast.error('Erro ao atualizar gasto. Tente novamente.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleDelete() {
@@ -229,9 +240,14 @@ export default function Expenses() {
     try {
       await expensesApi.delete(deleting.id)
       setExpenses(prev => prev.filter(e => e.id !== deleting.id))
+      toast.success(`Gasto "${deleting.description}" removido.`)
       setDeleting(null)
-    } catch (e: any) { setError(e.message) }
-    finally { setSaving(false) }
+    } catch (e: any) {
+      setError(e.message)
+      toast.error('Erro ao excluir gasto. Tente novamente.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleDeleteAll() {
@@ -240,8 +256,13 @@ export default function Expenses() {
       await expensesApi.deleteAll()
       setExpenses([])
       setDeletingAll(false)
-    } catch (e: any) { setError(e.message) }
-    finally { setSaving(false) }
+      toast.success('Todos os gastos do mês foram removidos.')
+    } catch (e: any) {
+      setError(e.message)
+      toast.error('Erro ao zerar os gastos. Tente novamente.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const filtered = expenses.filter(e => {
@@ -257,7 +278,7 @@ export default function Expenses() {
   return (
     <div className="animate-slide-up space-y-4 md:space-y-6">
 
-      {/* ── Header — empilha no mobile ───────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="font-display text-2xl md:text-3xl">Gastos</h1>
@@ -265,7 +286,6 @@ export default function Expenses() {
             {expenses.length} registro{expenses.length !== 1 ? 's' : ''} no mês
           </p>
         </div>
-        {/* botões lado a lado no mobile */}
         <div className="flex gap-2 self-stretch sm:self-auto">
           {expenses.length > 0 && (
             <button onClick={() => setDeletingAll(true)} className="btn-danger flex-1 sm:flex-none justify-center">
@@ -287,7 +307,7 @@ export default function Expenses() {
         </div>
       )}
 
-      {/* ── Search + filter — empilha no mobile ──────────────────────── */}
+      {/* ── Search + filter ──────────────────────────────────────────── */}
       <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
@@ -348,28 +368,20 @@ export default function Expenses() {
                   className="flex items-center gap-2.5 px-4 py-3.5 md:px-5 md:py-4
                              hover:bg-[var(--bg-secondary)] transition-colors"
                 >
-                  {/* dot urgência */}
                   <div className={`h-2 w-2 shrink-0 rounded-full ${URGENCY_DOT[exp.urgency] ?? 'bg-[var(--text-muted)]'}`} />
-
-                  {/* info */}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{exp.description}</p>
                     <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
                       <span className="text-[10px] text-[var(--text-muted)]">{exp.category}</span>
-                      {/* badge de urgência — oculto em telas muito pequenas */}
                       <span className={`hidden xs:inline text-[9px] ${URGENCY_COLOR[exp.urgency] ?? ''}`}>
                         {exp.urgency}
                       </span>
                     </div>
                   </div>
-
-                  {/* valor */}
                   <div className="text-right shrink-0">
                     <p className="text-sm font-semibold">{fmt(exp.amount)}</p>
                     <p className="text-[10px] text-[var(--text-muted)]">{exp.impact_percent}%</p>
                   </div>
-
-                  {/* ações — ícones menores no mobile */}
                   <div className="flex gap-0.5 shrink-0">
                     <button
                       onClick={() => setEditing(exp)}
@@ -393,7 +405,6 @@ export default function Expenses() {
             </div>
           </div>
 
-          {/* total */}
           <div className="flex items-center justify-between rounded-xl border border-[var(--border)]
                           bg-[var(--bg-secondary)] px-4 md:px-5 py-3">
             <span className="text-xs md:text-sm text-[var(--text-muted)]">
