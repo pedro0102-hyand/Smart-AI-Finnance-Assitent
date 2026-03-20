@@ -10,7 +10,6 @@ import {
 import { summaryApi } from '../services/api'
 import type { FinancialSummary } from '../types'
 
-// ── helpers ───────────────────────────────────────────────────────────────────
 const fmt = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -19,46 +18,32 @@ const URGENCY_COLOR: Record<string, string> = {
   'Média urgência':  '#fbbf24',
   'Baixa urgência':  '#4ade80',
 }
-
 const CHART_COLORS = ['#f59e0b','#f87171','#4ade80','#60a5fa','#c084fc','#fb923c','#34d399']
 
-function pct(v: number) {
-  const clamped = Math.min(100, Math.max(0, v))
-  if (clamped < 50) return 'text-success'
-  if (clamped < 75) return 'text-warning'
+function pctColor(v: number) {
+  if (v < 50) return 'text-success'
+  if (v < 75) return 'text-warning'
   return 'text-danger'
 }
-
 function barColor(v: number) {
   if (v < 50) return 'bg-success'
   if (v < 75) return 'bg-warning'
   return 'bg-danger'
 }
 
-// ── skeleton primitivo ────────────────────────────────────────────────────────
-function Bone({ className = '' }: { className?: string }) {
+// ── skeleton ──────────────────────────────────────────────────────────────────
+function Bone({ className = '', style = {} }: { className?: string; style?: React.CSSProperties }) {
   return (
     <div
       className={`rounded-lg bg-[var(--bg-secondary)] ${className}`}
-      style={{
-        animation: 'skeletonPulse 1.6s ease-in-out infinite',
-      }}
+      style={{ animation: 'skeletonPulse 1.6s ease-in-out infinite', ...style }}
     />
   )
 }
 
-// ── skeleton do dashboard ─────────────────────────────────────────────────────
 function DashboardSkeleton() {
   return (
     <>
-      <style>{`
-        @keyframes skeletonPulse {
-          0%, 100% { opacity: 1; }
-          50%       { opacity: 0.4; }
-        }
-      `}</style>
-
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div className="space-y-2">
           <Bone className="h-8 w-40" />
@@ -66,8 +51,6 @@ function DashboardSkeleton() {
         </div>
         <Bone className="h-9 w-9 rounded-xl" />
       </div>
-
-      {/* Stat cards — 2 colunas no mobile, 4 no desktop */}
       <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="card flex flex-col gap-3 p-4 md:p-6">
@@ -82,8 +65,6 @@ function DashboardSkeleton() {
           </div>
         ))}
       </div>
-
-      {/* Barra de orçamento */}
       <div className="card p-4 md:p-6 space-y-3">
         <div className="flex items-center justify-between">
           <Bone className="h-3 w-44" />
@@ -96,41 +77,26 @@ function DashboardSkeleton() {
           <Bone className="h-3 w-8" />
         </div>
       </div>
-
-      {/* Gráficos lado a lado */}
       <div className="grid gap-3 md:gap-4 md:grid-cols-2">
-        {/* Pie skeleton */}
         <div className="card p-4 md:p-6 space-y-4">
           <Bone className="h-3 w-36" />
           <div className="flex items-center justify-center">
             <Bone className="h-[180px] w-[180px] rounded-full" />
           </div>
           <div className="flex flex-wrap gap-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Bone key={i} className="h-3 w-16" />
-            ))}
+            {Array.from({ length: 4 }).map((_, i) => <Bone key={i} className="h-3 w-16" />)}
           </div>
         </div>
-
-        {/* Bar skeleton */}
         <div className="card p-4 md:p-6 space-y-4">
           <Bone className="h-3 w-28" />
           <div className="flex items-end justify-between gap-2 h-[180px] px-2">
             {Array.from({ length: 6 }).map((_, i) => (
-              <Bone
-                key={i}
-                className="flex-1 rounded-t-md rounded-b-none"
-                style={{
-                  height: `${30 + Math.sin(i * 1.2) * 40 + 60}px`,
-                  animationDelay: `${i * 80}ms`,
-                }}
-              />
+              <Bone key={i} className="flex-1 rounded-t-md rounded-b-none"
+                style={{ height: `${30 + Math.sin(i * 1.2) * 40 + 60}px`, animationDelay: `${i * 80}ms` }} />
             ))}
           </div>
         </div>
       </div>
-
-      {/* Top 5 gastos */}
       <div className="card p-4 md:p-6 space-y-4">
         <Bone className="h-3 w-28" />
         <div className="space-y-4">
@@ -149,31 +115,70 @@ function DashboardSkeleton() {
           ))}
         </div>
       </div>
-
-      {/* Sugestão da IA */}
       <div className="card p-4 md:p-6 space-y-3">
         <div className="flex items-center gap-2">
           <Bone className="h-4 w-4 rounded-full" />
           <Bone className="h-3 w-24" />
         </div>
         <div className="space-y-2">
-          <Bone className="h-3 w-full" />
-          <Bone className="h-3 w-full" />
-          <Bone className="h-3 w-4/5" />
-          <Bone className="h-3 w-full" />
-          <Bone className="h-3 w-3/5" />
+          {['w-full','w-full','w-4/5','w-full','w-3/5'].map((w, i) => (
+            <Bone key={i} className={`h-3 ${w}`} />
+          ))}
         </div>
       </div>
     </>
   )
 }
 
-// ── sub-components ────────────────────────────────────────────────────────────
-function StatCard({
-  label, value, sub, icon: Icon, accent = false,
-}: {
-  label: string; value: string; sub?: string
-  icon: React.ElementType; accent?: boolean
+// ── BudgetBar: anima de 0% → valor real ao montar ─────────────────────────────
+function BudgetBar({ spent }: { spent: number }) {
+  const [width, setWidth] = useState(0)
+
+  useEffect(() => {
+    // pequeno delay para garantir que o DOM já pintou o estado inicial
+    const t = setTimeout(() => setWidth(Math.min(spent, 100)), 120)
+    return () => clearTimeout(t)
+  }, [spent])
+
+  return (
+    <div className="card p-4 md:p-6">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="label text-[10px] md:text-xs">Comprometimento da renda</span>
+        <span className={`font-display text-xl md:text-2xl ${pctColor(spent)}`}>{spent}%</span>
+      </div>
+
+      <div className="h-3 w-full overflow-hidden rounded-full bg-[var(--bg-secondary)]">
+        <div
+          className={`h-full rounded-full ${barColor(spent)}`}
+          style={{
+            width: `${width}%`,
+            // easing com leve "overshoot" para dar sensação de peso
+            transition: 'width 900ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+          }}
+        />
+      </div>
+
+      <div className="mt-2 flex justify-between text-xs text-[var(--text-muted)]">
+        <span>0%</span>
+        <span className="text-success">Ideal ≤ 70%</span>
+        <span>100%</span>
+      </div>
+
+      {/* marcador sutil de 70% */}
+      <div className="relative h-1.5 mt-0.5">
+        <div
+          className="absolute -top-3.5 h-4 w-px bg-success/30"
+          style={{ left: '70%' }}
+          title="Limite ideal 70%"
+        />
+      </div>
+    </div>
+  )
+}
+
+// ── StatCard ──────────────────────────────────────────────────────────────────
+function StatCard({ label, value, sub, icon: Icon, accent = false }: {
+  label: string; value: string; sub?: string; icon: React.ElementType; accent?: boolean
 }) {
   return (
     <div className={`card flex flex-col gap-2 p-4 md:p-6 ${accent ? 'border-amber-500/40 bg-amber-500/5' : ''}`}>
@@ -194,11 +199,10 @@ function StatCard({
 
 function CustomTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null
-  const d = payload[0]
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm shadow-lg">
-      <p className="font-medium">{d.name}</p>
-      <p className="text-[var(--text-muted)]">{fmt(d.value)}</p>
+      <p className="font-medium">{payload[0].name}</p>
+      <p className="text-[var(--text-muted)]">{fmt(payload[0].value)}</p>
     </div>
   )
 }
@@ -210,30 +214,16 @@ export default function Dashboard() {
   const [error, setError]     = useState<string | null>(null)
 
   async function load() {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await summaryApi.get()
-      setSummary(data)
-    } catch (e: any) {
-      setError(e.message ?? 'Erro ao carregar dados')
-    } finally {
-      setLoading(false)
-    }
+    setLoading(true); setError(null)
+    try { setSummary(await summaryApi.get()) }
+    catch (e: any) { setError(e.message ?? 'Erro ao carregar dados') }
+    finally { setLoading(false) }
   }
 
   useEffect(() => { load() }, [])
 
-  // ── loading: skeletons no lugar do spinner ────────────────────────────────
-  if (loading) {
-    return (
-      <div className="animate-fade-in space-y-4 md:space-y-8">
-        <DashboardSkeleton />
-      </div>
-    )
-  }
+  if (loading) return <div className="space-y-4 md:space-y-8"><DashboardSkeleton /></div>
 
-  // ── erro ──────────────────────────────────────────────────────────────────
   if (error || !summary) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-24 text-center px-4">
@@ -242,53 +232,32 @@ export default function Dashboard() {
         </div>
         <div>
           <p className="font-display text-xl">Nenhum dado encontrado</p>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            {error ?? 'Cadastre um salário para começar.'}
-          </p>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">{error ?? 'Cadastre um salário para começar.'}</p>
         </div>
-        <button onClick={load} className="btn-primary">
-          <RefreshCw size={15} /> Tentar novamente
-        </button>
+        <button onClick={load} className="btn-primary"><RefreshCw size={15} /> Tentar novamente</button>
       </div>
     )
   }
 
-  // ── dados para gráficos ───────────────────────────────────────────────────
   const categoryMap: Record<string, number> = {}
   for (const exp of summary.expenses) {
     categoryMap[exp.category] = (categoryMap[exp.category] ?? 0) + exp.amount
   }
-  const pieData = Object.entries(categoryMap)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value)
-
-  const barData = summary.expenses
-    .slice(0, 6)
-    .map(e => ({ name: e.description.slice(0, 10), valor: e.amount }))
-
-  const topExpenses = [...summary.expenses]
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 5)
-
-  const spent = summary.percent_spent
+  const pieData = Object.entries(categoryMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+  const barData = summary.expenses.slice(0, 6).map(e => ({ name: e.description.slice(0, 10), valor: e.amount }))
+  const topExpenses = [...summary.expenses].sort((a, b) => b.amount - a.amount).slice(0, 5)
 
   return (
-    <div className="animate-slide-up space-y-4 md:space-y-8">
+    <div className="space-y-4 md:space-y-8">
 
-      {/* ── Header ────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="font-display text-2xl md:text-3xl">Visão Geral</h1>
-          <p className="mt-1 text-xs md:text-sm text-[var(--text-muted)]">
-            Resumo financeiro do mês atual
-          </p>
+          <p className="mt-1 text-xs md:text-sm text-[var(--text-muted)]">Resumo financeiro do mês atual</p>
         </div>
-        <button onClick={load} className="btn-ghost p-2.5" aria-label="Atualizar">
-          <RefreshCw size={16} />
-        </button>
+        <button onClick={load} className="btn-ghost p-2.5" aria-label="Atualizar"><RefreshCw size={16} /></button>
       </div>
 
-      {/* ── Stat cards ───────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
         <StatCard label="Salário"        value={fmt(summary.salary)}             icon={Wallet}       accent />
         <StatCard label="Total Gastos"   value={fmt(summary.total_expenses)}     sub={`${summary.percent_spent}% da renda`}  icon={TrendingDown} />
@@ -296,48 +265,17 @@ export default function Dashboard() {
         <StatCard label="Nº de Gastos"   value={String(summary.expenses.length)} sub="registros"                             icon={ArrowUpRight} />
       </div>
 
-      {/* ── Barra de orçamento ───────────────────────────────────────── */}
-      <div className="card p-4 md:p-6">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="label text-[10px] md:text-xs">Comprometimento da renda</span>
-          <span className={`font-display text-xl md:text-2xl ${pct(spent)}`}>
-            {spent}%
-          </span>
-        </div>
-        <div className="h-3 w-full overflow-hidden rounded-full bg-[var(--bg-secondary)]">
-          <div
-            className={`h-full rounded-full transition-all duration-700 ${barColor(spent)}`}
-            style={{ width: `${Math.min(spent, 100)}%` }}
-          />
-        </div>
-        <div className="mt-2 flex justify-between text-xs text-[var(--text-muted)]">
-          <span>0%</span>
-          <span className="text-success">Ideal ≤ 70%</span>
-          <span>100%</span>
-        </div>
-      </div>
+      {/* Barra animada na entrada */}
+      <BudgetBar spent={summary.percent_spent} />
 
-      {/* ── Gráficos ─────────────────────────────────────────────────── */}
       {summary.expenses.length > 0 && (
         <div className="grid gap-3 md:gap-4 md:grid-cols-2">
-
-          {/* Pie */}
           <div className="card p-4 md:p-6">
             <p className="label mb-4 text-[10px] md:text-xs">Gastos por categoria</p>
             <ResponsiveContainer width="100%" height={180}>
               <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={45}
-                  outerRadius={75}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
-                  {pieData.map((_, i) => (
-                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                  ))}
+                <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={3} dataKey="value">
+                  {pieData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                 </Pie>
                 <Tooltip content={<CustomTooltip />} />
               </PieChart>
@@ -345,43 +283,22 @@ export default function Dashboard() {
             <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
               {pieData.map((d, i) => (
                 <div key={d.name} className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
-                  <span
-                    className="inline-block h-2 w-2 shrink-0 rounded-full"
-                    style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
-                  />
+                  <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
                   <span className="truncate max-w-[80px]">{d.name}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Bar */}
           <div className="card p-4 md:p-6">
             <p className="label mb-4 text-[10px] md:text-xs">Maiores gastos</p>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={barData} margin={{ top: 0, right: 0, left: -24, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={v => `R$${v}`}
-                />
-                <Tooltip
-                  formatter={(v: number) => [fmt(v), 'Valor']}
-                  contentStyle={{
-                    background: 'var(--bg-card)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '0.75rem',
-                    fontSize: '0.7rem',
-                  }}
-                />
+                <XAxis dataKey="name" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} tickFormatter={v => `R$${v}`} />
+                <Tooltip formatter={(v: number) => [fmt(v), 'Valor']}
+                  contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '0.75rem', fontSize: '0.7rem' }} />
                 <Bar dataKey="valor" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -389,17 +306,13 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Top 5 gastos ─────────────────────────────────────────────── */}
       {topExpenses.length > 0 && (
         <div className="card p-4 md:p-6">
           <p className="label mb-3 md:mb-4 text-[10px] md:text-xs">Top 5 maiores gastos</p>
           <div className="space-y-3">
             {topExpenses.map(exp => (
               <div key={exp.id} className="flex items-center gap-3">
-                <div
-                  className="h-7 w-1 flex-shrink-0 rounded-full"
-                  style={{ background: URGENCY_COLOR[exp.urgency] ?? '#9ca3af' }}
-                />
+                <div className="h-7 w-1 flex-shrink-0 rounded-full" style={{ background: URGENCY_COLOR[exp.urgency] ?? '#9ca3af' }} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs md:text-sm font-medium">{exp.description}</p>
                   <p className="text-[10px] md:text-xs text-[var(--text-muted)]">{exp.category}</p>
@@ -414,7 +327,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Sugestão da IA ────────────────────────────────────────────── */}
       {summary.suggestion && (
         <div className="card border-amber-500/30 bg-amber-500/5 p-4 md:p-6">
           <div className="mb-3 flex items-center gap-2">

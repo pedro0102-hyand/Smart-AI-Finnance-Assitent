@@ -1,20 +1,38 @@
-import { Outlet, NavLink } from 'react-router-dom'
+import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Receipt, Wallet,
   ShoppingCart, MessageSquare, Sun, Moon, TrendingUp,
 } from 'lucide-react'
 import { useTheme } from '../../context/ThemeContext'
+import { usePageTitle } from '../../hooks/usePageTitle'
+import { usePageTransition } from '../../hooks/usePageTransition'
 
 const NAV = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard',  labelShort: 'Início'    },
-  { to: '/expenses',  icon: Receipt,         label: 'Gastos',     labelShort: 'Gastos'    },
-  { to: '/salary',    icon: Wallet,          label: 'Salário',    labelShort: 'Salário'   },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard',      labelShort: 'Início'  },
+  { to: '/expenses',  icon: Receipt,         label: 'Gastos',         labelShort: 'Gastos'  },
+  { to: '/salary',    icon: Wallet,          label: 'Salário',        labelShort: 'Salário' },
   { to: '/purchase',  icon: ShoppingCart,    label: 'Posso Comprar?', labelShort: 'Comprar' },
-  { to: '/chat',      icon: MessageSquare,   label: 'Assistente IA',  labelShort: 'Chat'   },
+  { to: '/chat',      icon: MessageSquare,   label: 'Assistente IA',  labelShort: 'Chat'    },
 ]
+
+// Mapa de label curto → label completo para o header mobile
+const ROUTE_LABEL: Record<string, string> = {
+  '/dashboard': 'Dashboard',
+  '/expenses':  'Gastos',
+  '/salary':    'Salário',
+  '/purchase':  'Posso Comprar?',
+  '/chat':      'Assistente IA',
+}
 
 export default function Layout() {
   const { theme, toggle } = useTheme()
+  const { pathname } = useLocation()
+  const { transitionKey, transitionClass } = usePageTransition()
+
+  // Atualiza o <title> da aba conforme a rota
+  usePageTitle()
+
+  const currentLabel = ROUTE_LABEL[pathname] ?? 'SmartFinance'
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-[var(--bg-primary)]">
@@ -73,20 +91,27 @@ export default function Layout() {
       {/* ── Main ────────────────────────────────────────────────────── */}
       <div className="flex flex-1 flex-col overflow-hidden">
 
-        {/* Mobile header */}
+        {/* Mobile header — mostra o nome da página atual ────────────── */}
         <header className="md:hidden flex items-center justify-between px-4 py-3
                            border-b border-[var(--border)] bg-[var(--bg-secondary)] shrink-0">
-          <span className="font-display text-lg">
-            Smart<span className="text-amber-500">Finance</span>
-          </span>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500">
+              <TrendingUp size={12} className="text-graphite-950" strokeWidth={2.5} />
+            </div>
+            <span className="font-display text-base leading-none">
+              {currentLabel}
+            </span>
+          </div>
           <button onClick={toggle} className="btn-ghost p-2" aria-label="Alternar tema">
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
         </header>
 
-        {/* Page content — padding menor no mobile */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-8 animate-fade-in">
-          <Outlet />
+        {/* Page content com transição de rota ───────────────────────── */}
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-8">
+          <div key={transitionKey} className={transitionClass}>
+            <Outlet />
+          </div>
         </main>
 
         {/* Mobile bottom nav */}

@@ -1,12 +1,13 @@
-import { useState } from 'react'
+
+import { useState, useEffect } from 'react'
 import {
   ShoppingCart, CheckCircle2, XCircle, AlertTriangle,
   RefreshCw, X, TrendingUp, CreditCard, Percent, Sparkles,
+  Zap,
 } from 'lucide-react'
-import { purchaseApi } from '../services/api'
+import { purchaseApi, salaryApi, summaryApi } from '../services/api'
 import type { PurchaseResponse } from '../types'
 
-// ── helpers ───────────────────────────────────────────────────────────────────
 const fmt = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -23,10 +24,7 @@ function MeterBar({ label, value, color }: { label: string; value: number; color
         <span className="font-medium">{value.toFixed(1)}%</span>
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--bg-secondary)]">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${color}`}
-          style={{ width: `${Math.min(value, 100)}%` }}
-        />
+        <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${Math.min(value, 100)}%` }} />
       </div>
     </div>
   )
@@ -38,79 +36,114 @@ function barColor(v: number) {
   return 'bg-danger'
 }
 
-// ── result card ───────────────────────────────────────────────────────────────
-function ResultCard({ result, amount }: { result: PurchaseResponse; amount: number }) {
-  const { can_buy, recommendation, current_percent_spent, new_percent_spent,
-          impact_percent, suggested_installments, installment_value } = result
+function impactLabel(pct: number): { text: string; color: string } {
+  if (pct <= 5)  return { text: 'Impacto muito baixo',  color: 'text-success' }
+  if (pct <= 15) return { text: 'Impacto moderado',     color: 'text-warning' }
+  if (pct <= 30) return { text: 'Impacto significativo', color: 'text-warning' }
+  return              { text: 'Impacto alto na renda',  color: 'text-danger'  }
+}
+
+// ── Preview em tempo real ─────────────────────────────────────────────────────
+interface LivePreviewProps {
+  amount: number
+  salary: number
+  totalExpenses: number
+}
+
+function LivePreview({ amount, salary, totalExpenses }: LivePreviewProps) {
+  if (!salary || !amount || amount <= 0) return null
+
+  const impactPct      = (amount / salary) * 100
+  const newTotalPct    = ((totalExpenses + amount) / salary) * 100
+  const { text, color } = impactLabel(impactPct)
 
   return (
-    <div className={`card animate-slide-up border-2 ${
-      can_buy ? 'border-success/30 bg-success/5' : 'border-danger/30 bg-danger/5'
-    }`}>
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-4 space-y-3 animate-slide-up">
+      <div className="flex items-center gap-2">
+        <Zap size={13} className="text-amber-500 shrink-0" />
+        <p className="text-xs font-medium uppercase tracking-widest text-[var(--text-muted)]">
+          Prévia do impacto
+        </p>
+      </div>
 
-      {/* veredicto */}
+      {/* linha de impacto */}
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-[var(--text-muted)]">Representa</span>
+        <div className="text-right">
+          <span className={`font-display text-xl ${color}`}>
+            {impactPct.toFixed(1)}%
+          </span>
+          <span className="text-xs text-[var(--text-muted)] ml-1">da renda</span>
+        </div>
+      </div>
+
+      {/* mini barra */}
+      <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--bg-card)]">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${barColor(impactPct)}`}
+          style={{ width: `${Math.min(impactPct, 100)}%` }}
+        />
+      </div>
+
+      {/* rótulo de avaliação */}
+      <div className={`flex items-center gap-1.5 text-xs font-medium ${color}`}>
+        {impactPct <= 15
+          ? <CheckCircle2 size={13} />
+          : <AlertTriangle size={13} />
+        }
+        {text}
+      </div>
+
+      {/* comprometimento projetado */}
+      <div className="pt-1 border-t border-[var(--border)]">
+        <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+          <span>Comprometimento após compra</span>
+          <span className={`font-semibold ${barColor(newTotalPct).replace('bg-', 'text-')}`}>
+            {newTotalPct.toFixed(1)}%
+          </span>
+        </div>
+        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-card)]">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${barColor(newTotalPct)}`}
+            style={{ width: `${Math.min(newTotalPct, 100)}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── ResultCard ────────────────────────────────────────────────────────────────
+function ResultCard({ result }: { result: PurchaseResponse }) {
+  const { can_buy, recommendation, current_percent_spent, new_percent_spent,
+          impact_percent, suggested_installments, installment_value } = result
+  return (
+    <div className={`card animate-slide-up border-2 ${can_buy ? 'border-success/30 bg-success/5' : 'border-danger/30 bg-danger/5'}`}>
       <div className="flex flex-col items-center gap-3 pb-6 text-center border-b border-[var(--border)]">
         <StatusIcon can={can_buy} />
         <div>
-          <p className="font-display text-2xl">
-            {can_buy ? 'Pode comprar!' : 'Não recomendado'}
-          </p>
-          <p className="mt-1.5 text-sm text-[var(--text-muted)] max-w-xs mx-auto leading-relaxed">
-            {recommendation}
-          </p>
+          <p className="font-display text-2xl">{can_buy ? 'Pode comprar!' : 'Não recomendado'}</p>
+          <p className="mt-1.5 text-sm text-[var(--text-muted)] max-w-xs mx-auto leading-relaxed">{recommendation}</p>
         </div>
       </div>
-
-      {/* métricas */}
       <div className="py-6 space-y-4 border-b border-[var(--border)]">
-        <MeterBar
-          label="Comprometimento atual"
-          value={current_percent_spent}
-          color={barColor(current_percent_spent)}
-        />
-        <MeterBar
-          label="Comprometimento após compra"
-          value={new_percent_spent}
-          color={barColor(new_percent_spent)}
-        />
+        <MeterBar label="Comprometimento atual"       value={current_percent_spent} color={barColor(current_percent_spent)} />
+        <MeterBar label="Comprometimento após compra" value={new_percent_spent}     color={barColor(new_percent_spent)} />
       </div>
-
-      {/* cards de info */}
       <div className="pt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl bg-[var(--bg-secondary)] p-4 text-center">
-          <Percent size={16} className="mx-auto mb-1.5 text-[var(--text-muted)]" />
-          <p className="font-display text-lg">{impact_percent.toFixed(1)}%</p>
-          <p className="mt-0.5 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
-            Impacto na renda
-          </p>
-        </div>
-
-        <div className="rounded-xl bg-[var(--bg-secondary)] p-4 text-center">
-          <TrendingUp size={16} className="mx-auto mb-1.5 text-[var(--text-muted)]" />
-          <p className="font-display text-lg">{new_percent_spent.toFixed(1)}%</p>
-          <p className="mt-0.5 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
-            Após a compra
-          </p>
-        </div>
-
-        <div className="rounded-xl bg-[var(--bg-secondary)] p-4 text-center">
-          <CreditCard size={16} className="mx-auto mb-1.5 text-[var(--text-muted)]" />
-          <p className="font-display text-lg">{suggested_installments}x</p>
-          <p className="mt-0.5 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
-            Parcelas sugeridas
-          </p>
-        </div>
-
-        <div className="rounded-xl bg-[var(--bg-secondary)] p-4 text-center">
-          <ShoppingCart size={16} className="mx-auto mb-1.5 text-[var(--text-muted)]" />
-          <p className="font-display text-base">{fmt(installment_value)}</p>
-          <p className="mt-0.5 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
-            Por parcela
-          </p>
-        </div>
+        {[
+          { icon: Percent,     label: 'Impacto na renda',    value: `${impact_percent.toFixed(1)}%` },
+          { icon: TrendingUp,  label: 'Após a compra',       value: `${new_percent_spent.toFixed(1)}%` },
+          { icon: CreditCard,  label: 'Parcelas sugeridas',  value: `${suggested_installments}x` },
+          { icon: ShoppingCart,label: 'Por parcela',         value: fmt(installment_value) },
+        ].map(({ icon: Icon, label, value }) => (
+          <div key={label} className="rounded-xl bg-[var(--bg-secondary)] p-4 text-center">
+            <Icon size={16} className="mx-auto mb-1.5 text-[var(--text-muted)]" />
+            <p className="font-display text-lg">{value}</p>
+            <p className="mt-0.5 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">{label}</p>
+          </div>
+        ))}
       </div>
-
-      {/* aviso se parcelamento = 1x */}
       {suggested_installments === 1 && can_buy && (
         <div className="mt-4 flex items-center gap-2 rounded-xl bg-success/10 px-4 py-3 text-sm text-success">
           <CheckCircle2 size={15} />
@@ -130,25 +163,36 @@ export default function Purchase() {
   const [error, setError]             = useState<string | null>(null)
   const [errors, setErrors]           = useState<{ description?: string; amount?: string }>({})
 
+  // dados para o preview em tempo real
+  const [salary, setSalary]               = useState(0)
+  const [totalExpenses, setTotalExpenses] = useState(0)
+
+  // carrega salário e total de gastos ao montar (necessário para o preview)
+  useEffect(() => {
+    Promise.allSettled([
+      salaryApi.getCurrent(),
+      summaryApi.get(),
+    ]).then(([salRes, sumRes]) => {
+      if (salRes.status === 'fulfilled') setSalary(salRes.value.amount)
+      if (sumRes.status === 'fulfilled') setTotalExpenses(sumRes.value.total_expenses)
+    })
+  }, [])
+
+  const parsedAmount = parseFloat(amount.replace(',', '.')) || 0
+
   function validate() {
     const e: typeof errors = {}
     if (!description.trim()) e.description = 'Descreva o que quer comprar'
-    const n = Number(amount.replace(',', '.'))
-    if (!amount || isNaN(n) || n <= 0) e.amount = 'Informe um valor válido'
+    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) e.amount = 'Informe um valor válido'
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
   async function handleCheck() {
     if (!validate()) return
-    setLoading(true)
-    setError(null)
-    setResult(null)
+    setLoading(true); setError(null); setResult(null)
     try {
-      const res = await purchaseApi.check({
-        description: description.trim(),
-        amount: Number(amount.replace(',', '.')),
-      })
+      const res = await purchaseApi.check({ description: description.trim(), amount: parsedAmount })
       setResult(res)
     } catch (e: any) {
       setError(e.message ?? 'Erro ao consultar')
@@ -158,25 +202,17 @@ export default function Purchase() {
   }
 
   function handleReset() {
-    setResult(null)
-    setDescription('')
-    setAmount('')
-    setError(null)
-    setErrors({})
+    setResult(null); setDescription(''); setAmount(''); setError(null); setErrors({})
   }
 
   return (
-    <div className="animate-slide-up space-y-6 max-w-xl mx-auto">
+    <div className="space-y-6 max-w-xl mx-auto">
 
-      {/* ── Header ──────────────────────────────────────────────────── */}
       <div>
         <h1 className="font-display text-3xl">Posso comprar?</h1>
-        <p className="mt-1 text-sm text-[var(--text-muted)]">
-          Analise se uma compra cabe no seu orçamento
-        </p>
+        <p className="mt-1 text-sm text-[var(--text-muted)]">Analise se uma compra cabe no seu orçamento</p>
       </div>
 
-      {/* ── Error banner ────────────────────────────────────────────── */}
       {error && (
         <div className="flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           <AlertTriangle size={16} /> {error}
@@ -184,7 +220,6 @@ export default function Purchase() {
         </div>
       )}
 
-      {/* ── Formulário ──────────────────────────────────────────────── */}
       {!result && (
         <div className="card space-y-5">
           <div className="flex items-center gap-2 pb-2 border-b border-[var(--border)]">
@@ -194,7 +229,6 @@ export default function Purchase() {
             <p className="text-sm font-medium">Análise inteligente de compra</p>
           </div>
 
-          {/* O que quer comprar */}
           <div>
             <label className="label">O que quer comprar?</label>
             <input
@@ -204,12 +238,9 @@ export default function Purchase() {
               onChange={e => { setDescription(e.target.value); setErrors(v => ({ ...v, description: undefined })) }}
               onKeyDown={e => e.key === 'Enter' && handleCheck()}
             />
-            {errors.description && (
-              <p className="mt-1 text-xs text-danger">{errors.description}</p>
-            )}
+            {errors.description && <p className="mt-1 text-xs text-danger">{errors.description}</p>}
           </div>
 
-          {/* Valor */}
           <div>
             <label className="label">Valor total (R$)</label>
             <input
@@ -222,16 +253,19 @@ export default function Purchase() {
               onChange={e => { setAmount(e.target.value); setErrors(v => ({ ...v, amount: undefined })) }}
               onKeyDown={e => e.key === 'Enter' && handleCheck()}
             />
-            {errors.amount && (
-              <p className="mt-1 text-xs text-danger">{errors.amount}</p>
-            )}
+            {errors.amount && <p className="mt-1 text-xs text-danger">{errors.amount}</p>}
           </div>
 
-          <button
-            onClick={handleCheck}
-            disabled={loading}
-            className="btn-primary w-full justify-center py-3 text-base"
-          >
+          {/* ── Preview em tempo real ── */}
+          {parsedAmount > 0 && salary > 0 && (
+            <LivePreview
+              amount={parsedAmount}
+              salary={salary}
+              totalExpenses={totalExpenses}
+            />
+          )}
+
+          <button onClick={handleCheck} disabled={loading} className="btn-primary w-full justify-center py-3 text-base">
             {loading
               ? <><RefreshCw size={16} className="animate-spin" /> Analisando…</>
               : <><ShoppingCart size={16} /> Analisar compra</>
@@ -240,39 +274,30 @@ export default function Purchase() {
         </div>
       )}
 
-      {/* ── Resultado ───────────────────────────────────────────────── */}
       {result && (
         <>
-          <ResultCard result={result} amount={Number(amount)} />
+          <ResultCard result={result} />
           <button onClick={handleReset} className="btn-ghost w-full justify-center">
             <RefreshCw size={15} /> Nova análise
           </button>
         </>
       )}
 
-      {/* ── Dica de uso ─────────────────────────────────────────────── */}
       {!result && !loading && (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-5 py-4">
-          <p className="text-xs font-medium uppercase tracking-widest text-[var(--text-muted)] mb-2">
-            Como funciona
-          </p>
+          <p className="text-xs font-medium uppercase tracking-widest text-[var(--text-muted)] mb-2">Como funciona</p>
           <ul className="space-y-1.5 text-sm text-[var(--text-muted)]">
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-              Compra segura se o total ficar abaixo de 70% da renda
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
-              Possível com cautela entre 70% e 85%
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
-              Não recomendado acima de 85%
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--text-muted)]" />
-              O sistema sugere o menor número de parcelas viável
-            </li>
+            {[
+              { color: 'bg-amber-500', text: 'Compra segura se o total ficar abaixo de 70% da renda' },
+              { color: 'bg-warning',   text: 'Possível com cautela entre 70% e 85%' },
+              { color: 'bg-danger',    text: 'Não recomendado acima de 85%' },
+              { color: 'bg-[var(--text-muted)]', text: 'O sistema sugere o menor número de parcelas viável' },
+            ].map(({ color, text }) => (
+              <li key={text} className="flex items-start gap-2">
+                <span className={`mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${color}`} />
+                {text}
+              </li>
+            ))}
           </ul>
         </div>
       )}
