@@ -89,10 +89,10 @@ function DashboardSkeleton() {
         </div>
         <div className="card p-4 md:p-6 space-y-4">
           <Bone className="h-3 w-28" />
-          <div className="flex items-end justify-between gap-2 h-[180px] px-2">
+          <div className="flex flex-col justify-between gap-2 h-[180px] px-2">
             {Array.from({ length: 6 }).map((_, i) => (
-              <Bone key={i} className="flex-1 rounded-t-md rounded-b-none"
-                style={{ height: `${30 + Math.sin(i * 1.2) * 40 + 60}px`, animationDelay: `${i * 80}ms` }} />
+              <Bone key={i} className="h-6 rounded-md"
+                style={{ width: `${40 + Math.sin(i * 1.2) * 30 + 30}%`, animationDelay: `${i * 80}ms` }} />
             ))}
           </div>
         </div>
@@ -135,7 +135,6 @@ function BudgetBar({ spent }: { spent: number }) {
   const [width, setWidth] = useState(0)
 
   useEffect(() => {
-    // pequeno delay para garantir que o DOM já pintou o estado inicial
     const t = setTimeout(() => setWidth(Math.min(spent, 100)), 120)
     return () => clearTimeout(t)
   }, [spent])
@@ -152,7 +151,6 @@ function BudgetBar({ spent }: { spent: number }) {
           className={`h-full rounded-full ${barColor(spent)}`}
           style={{
             width: `${width}%`,
-            // easing com leve "overshoot" para dar sensação de peso
             transition: 'width 900ms cubic-bezier(0.34, 1.56, 0.64, 1)',
           }}
         />
@@ -164,7 +162,6 @@ function BudgetBar({ spent }: { spent: number }) {
         <span>100%</span>
       </div>
 
-      {/* marcador sutil de 70% */}
       <div className="relative h-1.5 mt-0.5">
         <div
           className="absolute -top-3.5 h-4 w-px bg-success/30"
@@ -243,9 +240,23 @@ export default function Dashboard() {
   for (const exp of summary.expenses) {
     categoryMap[exp.category] = (categoryMap[exp.category] ?? 0) + exp.amount
   }
-  const pieData = Object.entries(categoryMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
-  const barData = summary.expenses.slice(0, 6).map(e => ({ name: e.description.slice(0, 10), valor: e.amount }))
-  const topExpenses = [...summary.expenses].sort((a, b) => b.amount - a.amount).slice(0, 5)
+  const pieData = Object.entries(categoryMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+
+  const barData = summary.expenses
+    .slice(0, 6)
+    .map(e => ({ name: e.description, valor: e.amount }))
+
+  // Calcula a largura do eixo Y com base no nome mais longo (aprox. 7px por caractere)
+  const yAxisWidth = Math.min(
+    Math.max(...barData.map(d => d.name.length)) * 7 + 8,
+    180
+  )
+
+  const topExpenses = [...summary.expenses]
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 5)
 
   return (
     <div className="space-y-4 md:space-y-8">
@@ -265,17 +276,28 @@ export default function Dashboard() {
         <StatCard label="Nº de Gastos"   value={String(summary.expenses.length)} sub="registros"                             icon={ArrowUpRight} />
       </div>
 
-      {/* Barra animada na entrada */}
       <BudgetBar spent={summary.percent_spent} />
 
       {summary.expenses.length > 0 && (
         <div className="grid gap-3 md:gap-4 md:grid-cols-2">
+
+          {/* ── Gráfico de pizza por categoria ── */}
           <div className="card p-4 md:p-6">
             <p className="label mb-4 text-[10px] md:text-xs">Gastos por categoria</p>
             <ResponsiveContainer width="100%" height={180}>
               <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={3} dataKey="value">
-                  {pieData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                <Pie
+                  data={pieData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={45}
+                  outerRadius={75}
+                  paddingAngle={3}
+                  dataKey="value"
+                >
+                  {pieData.map((_, i) => (
+                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                  ))}
                 </Pie>
                 <Tooltip content={<CustomTooltip />} />
               </PieChart>
@@ -283,26 +305,62 @@ export default function Dashboard() {
             <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
               {pieData.map((d, i) => (
                 <div key={d.name} className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
-                  <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
+                  <span
+                    className="inline-block h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
+                  />
                   <span className="truncate max-w-[80px]">{d.name}</span>
                 </div>
               ))}
             </div>
           </div>
 
+          {/* ── Gráfico de barras horizontal — nomes completos no eixo Y ── */}
           <div className="card p-4 md:p-6">
             <p className="label mb-4 text-[10px] md:text-xs">Maiores gastos</p>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={barData} margin={{ top: 0, right: 0, left: -24, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} tickFormatter={v => `R$${v}`} />
-                <Tooltip formatter={(v: number) => [fmt(v), 'Valor']}
-                  contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '0.75rem', fontSize: '0.7rem' }} />
-                <Bar dataKey="valor" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+            <ResponsiveContainer
+              width="100%"
+              height={Math.max(barData.length * 36 + 16, 180)}
+            >
+              <BarChart
+                data={barData}
+                layout="vertical"
+                margin={{ top: 0, right: 8, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="var(--border)"
+                  horizontal={false}
+                />
+                <XAxis
+                  type="number"
+                  tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={v => `R$${v}`}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={yAxisWidth}
+                  tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  formatter={(v: number) => [fmt(v), 'Valor']}
+                  contentStyle={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '0.75rem',
+                    fontSize: '0.7rem',
+                  }}
+                />
+                <Bar dataKey="valor" fill="#f59e0b" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
+
         </div>
       )}
 
@@ -312,7 +370,10 @@ export default function Dashboard() {
           <div className="space-y-3">
             {topExpenses.map(exp => (
               <div key={exp.id} className="flex items-center gap-3">
-                <div className="h-7 w-1 flex-shrink-0 rounded-full" style={{ background: URGENCY_COLOR[exp.urgency] ?? '#9ca3af' }} />
+                <div
+                  className="h-7 w-1 flex-shrink-0 rounded-full"
+                  style={{ background: URGENCY_COLOR[exp.urgency] ?? '#9ca3af' }}
+                />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs md:text-sm font-medium">{exp.description}</p>
                   <p className="text-[10px] md:text-xs text-[var(--text-muted)]">{exp.category}</p>
@@ -338,6 +399,7 @@ export default function Dashboard() {
           </p>
         </div>
       )}
+
     </div>
   )
 }
