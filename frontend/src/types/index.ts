@@ -58,6 +58,7 @@ export interface PurchaseResponse {
   suggested_installments: number
   installment_value: number
   recommendation: string
+  ai_analysis?: string | null  // análise qualitativa gerada pela IA
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────

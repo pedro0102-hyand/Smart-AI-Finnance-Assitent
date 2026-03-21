@@ -1,9 +1,8 @@
-
 import { useState, useEffect } from 'react'
 import {
   ShoppingCart, CheckCircle2, XCircle, AlertTriangle,
   RefreshCw, X, TrendingUp, CreditCard, Percent, Sparkles,
-  Zap,
+  Zap, BrainCircuit,
 } from 'lucide-react'
 import { purchaseApi, salaryApi, summaryApi } from '../services/api'
 import type { PurchaseResponse } from '../types'
@@ -24,7 +23,10 @@ function MeterBar({ label, value, color }: { label: string; value: number; color
         <span className="font-medium">{value.toFixed(1)}%</span>
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--bg-secondary)]">
-        <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${Math.min(value, 100)}%` }} />
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${color}`}
+          style={{ width: `${Math.min(value, 100)}%` }}
+        />
       </div>
     </div>
   )
@@ -37,10 +39,10 @@ function barColor(v: number) {
 }
 
 function impactLabel(pct: number): { text: string; color: string } {
-  if (pct <= 5)  return { text: 'Impacto muito baixo',  color: 'text-success' }
-  if (pct <= 15) return { text: 'Impacto moderado',     color: 'text-warning' }
+  if (pct <= 5)  return { text: 'Impacto muito baixo',   color: 'text-success' }
+  if (pct <= 15) return { text: 'Impacto moderado',      color: 'text-warning' }
   if (pct <= 30) return { text: 'Impacto significativo', color: 'text-warning' }
-  return              { text: 'Impacto alto na renda',  color: 'text-danger'  }
+  return              { text: 'Impacto alto na renda',   color: 'text-danger'  }
 }
 
 // ── Preview em tempo real ─────────────────────────────────────────────────────
@@ -53,9 +55,9 @@ interface LivePreviewProps {
 function LivePreview({ amount, salary, totalExpenses }: LivePreviewProps) {
   if (!salary || !amount || amount <= 0) return null
 
-  const impactPct      = (amount / salary) * 100
-  const newTotalPct    = ((totalExpenses + amount) / salary) * 100
-  const { text, color } = impactLabel(impactPct)
+  const impactPct            = (amount / salary) * 100
+  const newTotalPct          = ((totalExpenses + amount) / salary) * 100
+  const { text, color }      = impactLabel(impactPct)
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-4 space-y-3 animate-slide-up">
@@ -66,18 +68,14 @@ function LivePreview({ amount, salary, totalExpenses }: LivePreviewProps) {
         </p>
       </div>
 
-      {/* linha de impacto */}
       <div className="flex items-center justify-between">
         <span className="text-sm text-[var(--text-muted)]">Representa</span>
         <div className="text-right">
-          <span className={`font-display text-xl ${color}`}>
-            {impactPct.toFixed(1)}%
-          </span>
+          <span className={`font-display text-xl ${color}`}>{impactPct.toFixed(1)}%</span>
           <span className="text-xs text-[var(--text-muted)] ml-1">da renda</span>
         </div>
       </div>
 
-      {/* mini barra */}
       <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--bg-card)]">
         <div
           className={`h-full rounded-full transition-all duration-500 ${barColor(impactPct)}`}
@@ -85,16 +83,11 @@ function LivePreview({ amount, salary, totalExpenses }: LivePreviewProps) {
         />
       </div>
 
-      {/* rótulo de avaliação */}
       <div className={`flex items-center gap-1.5 text-xs font-medium ${color}`}>
-        {impactPct <= 15
-          ? <CheckCircle2 size={13} />
-          : <AlertTriangle size={13} />
-        }
+        {impactPct <= 15 ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
         {text}
       </div>
 
-      {/* comprometimento projetado */}
       <div className="pt-1 border-t border-[var(--border)]">
         <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
           <span>Comprometimento após compra</span>
@@ -113,29 +106,83 @@ function LivePreview({ amount, salary, totalExpenses }: LivePreviewProps) {
   )
 }
 
+// ── Bloco de análise da IA ────────────────────────────────────────────────────
+function AiAnalysisBlock({ text, loading }: { text?: string | null; loading?: boolean }) {
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-2 animate-pulse">
+        <div className="flex items-center gap-2">
+          <BrainCircuit size={14} className="text-amber-500 shrink-0" />
+          <span className="text-xs font-medium uppercase tracking-widest text-amber-500">
+            Análise da IA
+          </span>
+        </div>
+        <div className="space-y-1.5">
+          <div className="h-3 rounded bg-amber-500/10 w-full" />
+          <div className="h-3 rounded bg-amber-500/10 w-4/5" />
+          <div className="h-3 rounded bg-amber-500/10 w-3/5" />
+        </div>
+      </div>
+    )
+  }
+
+  if (!text) return null
+
+  return (
+    <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-2 animate-slide-up">
+      <div className="flex items-center gap-2">
+        <BrainCircuit size={14} className="text-amber-500 shrink-0" />
+        <span className="text-xs font-medium uppercase tracking-widest text-amber-500">
+          Análise da IA
+        </span>
+      </div>
+      <p className="text-sm leading-relaxed text-[var(--text-primary)]">{text}</p>
+    </div>
+  )
+}
+
 // ── ResultCard ────────────────────────────────────────────────────────────────
 function ResultCard({ result }: { result: PurchaseResponse }) {
-  const { can_buy, recommendation, current_percent_spent, new_percent_spent,
-          impact_percent, suggested_installments, installment_value } = result
+  const {
+    can_buy, recommendation, current_percent_spent, new_percent_spent,
+    impact_percent, suggested_installments, installment_value, ai_analysis,
+  } = result
+
   return (
     <div className={`card animate-slide-up border-2 ${can_buy ? 'border-success/30 bg-success/5' : 'border-danger/30 bg-danger/5'}`}>
+
+      {/* ── Status ── */}
       <div className="flex flex-col items-center gap-3 pb-6 text-center border-b border-[var(--border)]">
         <StatusIcon can={can_buy} />
         <div>
           <p className="font-display text-2xl">{can_buy ? 'Pode comprar!' : 'Não recomendado'}</p>
-          <p className="mt-1.5 text-sm text-[var(--text-muted)] max-w-xs mx-auto leading-relaxed">{recommendation}</p>
+          <p className="mt-1.5 text-sm text-[var(--text-muted)] max-w-xs mx-auto leading-relaxed">
+            {recommendation}
+          </p>
         </div>
       </div>
+
+      {/* ── Barras de comprometimento ── */}
       <div className="py-6 space-y-4 border-b border-[var(--border)]">
-        <MeterBar label="Comprometimento atual"       value={current_percent_spent} color={barColor(current_percent_spent)} />
-        <MeterBar label="Comprometimento após compra" value={new_percent_spent}     color={barColor(new_percent_spent)} />
+        <MeterBar
+          label="Comprometimento atual"
+          value={current_percent_spent}
+          color={barColor(current_percent_spent)}
+        />
+        <MeterBar
+          label="Comprometimento após compra"
+          value={new_percent_spent}
+          color={barColor(new_percent_spent)}
+        />
       </div>
+
+      {/* ── Métricas ── */}
       <div className="pt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { icon: Percent,     label: 'Impacto na renda',    value: `${impact_percent.toFixed(1)}%` },
-          { icon: TrendingUp,  label: 'Após a compra',       value: `${new_percent_spent.toFixed(1)}%` },
-          { icon: CreditCard,  label: 'Parcelas sugeridas',  value: `${suggested_installments}x` },
-          { icon: ShoppingCart,label: 'Por parcela',         value: fmt(installment_value) },
+          { icon: Percent,      label: 'Impacto na renda',   value: `${impact_percent.toFixed(1)}%` },
+          { icon: TrendingUp,   label: 'Após a compra',      value: `${new_percent_spent.toFixed(1)}%` },
+          { icon: CreditCard,   label: 'Parcelas sugeridas', value: `${suggested_installments}x` },
+          { icon: ShoppingCart, label: 'Por parcela',        value: fmt(installment_value) },
         ].map(({ icon: Icon, label, value }) => (
           <div key={label} className="rounded-xl bg-[var(--bg-secondary)] p-4 text-center">
             <Icon size={16} className="mx-auto mb-1.5 text-[var(--text-muted)]" />
@@ -144,10 +191,19 @@ function ResultCard({ result }: { result: PurchaseResponse }) {
           </div>
         ))}
       </div>
+
+      {/* ── À vista ── */}
       {suggested_installments === 1 && can_buy && (
         <div className="mt-4 flex items-center gap-2 rounded-xl bg-success/10 px-4 py-3 text-sm text-success">
           <CheckCircle2 size={15} />
           Você pode pagar à vista sem comprometer o orçamento.
+        </div>
+      )}
+
+      {/* ── Análise da IA ── */}
+      {ai_analysis && (
+        <div className="mt-4">
+          <AiAnalysisBlock text={ai_analysis} />
         </div>
       )}
     </div>
@@ -163,11 +219,9 @@ export default function Purchase() {
   const [error, setError]             = useState<string | null>(null)
   const [errors, setErrors]           = useState<{ description?: string; amount?: string }>({})
 
-  // dados para o preview em tempo real
   const [salary, setSalary]               = useState(0)
   const [totalExpenses, setTotalExpenses] = useState(0)
 
-  // carrega salário e total de gastos ao montar (necessário para o preview)
   useEffect(() => {
     Promise.allSettled([
       salaryApi.getCurrent(),
@@ -210,7 +264,9 @@ export default function Purchase() {
 
       <div>
         <h1 className="font-display text-3xl">Posso comprar?</h1>
-        <p className="mt-1 text-sm text-[var(--text-muted)]">Analise se uma compra cabe no seu orçamento</p>
+        <p className="mt-1 text-sm text-[var(--text-muted)]">
+          Analise se uma compra cabe no seu orçamento
+        </p>
       </div>
 
       {error && (
@@ -220,6 +276,7 @@ export default function Purchase() {
         </div>
       )}
 
+      {/* ── Formulário ── */}
       {!result && (
         <div className="card space-y-5">
           <div className="flex items-center gap-2 pb-2 border-b border-[var(--border)]">
@@ -256,7 +313,6 @@ export default function Purchase() {
             {errors.amount && <p className="mt-1 text-xs text-danger">{errors.amount}</p>}
           </div>
 
-          {/* ── Preview em tempo real ── */}
           {parsedAmount > 0 && salary > 0 && (
             <LivePreview
               amount={parsedAmount}
@@ -265,15 +321,20 @@ export default function Purchase() {
             />
           )}
 
-          <button onClick={handleCheck} disabled={loading} className="btn-primary w-full justify-center py-3 text-base">
+          <button
+            onClick={handleCheck}
+            disabled={loading}
+            className="btn-primary w-full justify-center py-3 text-base"
+          >
             {loading
-              ? <><RefreshCw size={16} className="animate-spin" /> Analisando…</>
-              : <><ShoppingCart size={16} /> Analisar compra</>
+              ? <><RefreshCw size={16} className="animate-spin" /> Analisando com IA…</>
+              : <><BrainCircuit size={16} /> Analisar compra</>
             }
           </button>
         </div>
       )}
 
+      {/* ── Resultado ── */}
       {result && (
         <>
           <ResultCard result={result} />
@@ -283,15 +344,18 @@ export default function Purchase() {
         </>
       )}
 
+      {/* ── Como funciona ── */}
       {!result && !loading && (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-5 py-4">
-          <p className="text-xs font-medium uppercase tracking-widest text-[var(--text-muted)] mb-2">Como funciona</p>
+          <p className="text-xs font-medium uppercase tracking-widest text-[var(--text-muted)] mb-2">
+            Como funciona
+          </p>
           <ul className="space-y-1.5 text-sm text-[var(--text-muted)]">
             {[
               { color: 'bg-amber-500', text: 'Compra segura se o total ficar abaixo de 70% da renda' },
               { color: 'bg-warning',   text: 'Possível com cautela entre 70% e 85%' },
               { color: 'bg-danger',    text: 'Não recomendado acima de 85%' },
-              { color: 'bg-[var(--text-muted)]', text: 'O sistema sugere o menor número de parcelas viável' },
+              { color: 'bg-[var(--text-muted)]', text: 'A IA analisa seus gastos cortáveis e dá um conselho personalizado' },
             ].map(({ color, text }) => (
               <li key={text} className="flex items-start gap-2">
                 <span className={`mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${color}`} />

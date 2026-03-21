@@ -368,3 +368,139 @@ def _call_suggestion_api(prompt: str) -> str:
         raise ValueError("Resposta vazia recebida do modelo.")
 
     return response.text 
+
+"""
+Adicionar ao final de backend/app/services/financial_analyzer.py
+"""
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Análise qualitativa de compra via IA
+# ──────────────────────────────────────────────────────────────────────────────
+
+PURCHASE_ANALYSIS_CACHE_TTL = 60  # 1 minuto — compras são únicas, cache curto
+_purchase_analysis_cache: dict[str, dict] = {}
+
+
+def _get_cached_purchase_analysis(key: str) -> str | None:
+    entry = _purchase_analysis_cache.get(key)
+    if entry and time.time() < entry["expires_at"]:
+        return entry["result"]
+    if entry:
+        del _purchase_analysis_cache[key]
+    return None
+
+
+def _set_cached_purchase_analysis(key: str, result: str) -> None:
+    _purchase_analysis_cache[key] = {
+        "result": result,
+        "expires_at": time.time() + PURCHASE_ANALYSIS_CACHE_TTL,
+    }
+
+
+@with_gemini_retry(max_retries=2, base_delay=1.5, fallback_value=None)
+def _call_purchase_analysis_api(prompt: str) -> str:
+    response = _client.models.generate_content(
+        model=MODEL_NAME,
+        contents=prompt,
+    )
+    if not response.text or not response.text.strip():
+        raise ValueError("Resposta vazia recebida do modelo.")
+    return response.text.strip()
+
+
+def analyze_purchase(
+    description: str,
+    amount: float,
+    salary: float,
+    current_percent_spent: float,
+    new_percent_spent: float,
+    suggested_installments: int,
+    installment_value: float,
+    can_buy: bool,
+    expenses: list[dict],
+) -> str | None:
+    """
+    Gera uma análise qualitativa personalizada para uma decisão de compra.
+
+    Vai além dos números — considera o perfil real de gastos do usuário,
+    aponta o que pode ser cortado para viabilizar a compra e dá um
+    conselho concreto e acionável em 2-3 frases.
+
+    Retorna None em caso de falha (o frontend trata graciosamente).
+    """
+    # Cache baseado nos dados da compra + estado financeiro atual
+    cache_key = hashlib.md5(
+        json.dumps({
+            "desc": description,
+            "amount": round(amount, 2),
+            "salary": round(salary, 2),
+            "pct": round(current_percent_spent, 1),
+        }, sort_keys=True).encode()
+    ).hexdigest()
+
+    cached = _get_cached_purchase_analysis(cache_key)
+    if cached:
+        return cached
+
+    # Gastos por urgência para contextualizar a IA
+    low_urgency  = [e for e in expenses if e.get("urgency") == "Baixa urgência"]
+    mid_urgency  = [e for e in expenses if e.get("urgency") == "Média urgência"]
+    high_urgency = [e for e in expenses if e.get("urgency") == "Alta urgência"]
+
+    low_total  = sum(e["amount"] for e in low_urgency)
+    mid_total  = sum(e["amount"] for e in mid_urgency)
+    high_total = sum(e["amount"] for e in high_urgency)
+
+    remaining  = salary - (salary * current_percent_spent / 100)
+
+    # Lista dos gastos cortáveis (baixa urgência) para a IA mencionar
+    low_items = ", ".join(
+        f"{e['description']} (R$ {e['amount']:.0f})"
+        for e in sorted(low_urgency, key=lambda x: x["amount"], reverse=True)[:3]
+    ) or "nenhum identificado"
+
+    installment_info = (
+        f"à vista (R$ {amount:.2f})"
+        if suggested_installments == 1
+        else f"em {suggested_installments}x de R$ {installment_value:.2f}"
+    )
+
+    decisao = "PODE comprar" if can_buy else "NÃO é recomendado comprar"
+
+    prompt = f"""Você é um consultor financeiro pessoal direto e empático. Analise essa decisão de compra.
+
+COMPRA DESEJADA:
+- Produto: {description}
+- Valor: R$ {amount:.2f} ({installment_info})
+- Decisão numérica: {decisao}
+
+SITUAÇÃO FINANCEIRA ATUAL:
+- Salário: R$ {salary:.2f}
+- Comprometimento atual: {current_percent_spent:.1f}% da renda
+- Comprometimento após compra: {new_percent_spent:.1f}% da renda
+- Saldo livre atual: R$ {remaining:.2f}
+
+DETALHAMENTO DOS GASTOS:
+- Gastos essenciais (alta urgência): R$ {high_total:.2f}
+- Gastos importantes (média urgência): R$ {mid_total:.2f}
+- Gastos cortáveis (baixa urgência): R$ {low_total:.2f}
+  → Principais itens cortáveis: {low_items}
+
+TAREFA:
+Escreva exatamente 2-3 frases de análise qualitativa personalizada. Seja específico, use os números reais, mencione os gastos cortáveis quando relevante. Não repita a decisão numérica óbvia — agregue valor com insights que o usuário não veria sozinho.
+
+Exemplos do tom esperado:
+- "Com R$ {low_total:.0f} em gastos de lazer que podem ser reduzidos, você conseguiria quitar esse valor em X meses sem apertar o orçamento."
+- "Essa compra comprometeria quase todo o seu saldo livre. Considere negociar em mais parcelas para manter fôlego financeiro."
+- "Seu orçamento está saudável para essa compra. Aproveite para quitar à vista e evitar juros."
+
+Responda apenas as frases de análise, em português, sem título ou formatação extra."""
+
+    try:
+        result = _call_purchase_analysis_api(prompt)
+        if result:
+            _set_cached_purchase_analysis(cache_key, result)
+        return result
+    except Exception as e:
+        logger.warning("Falha na análise de compra via IA: %s", e)
+        return None

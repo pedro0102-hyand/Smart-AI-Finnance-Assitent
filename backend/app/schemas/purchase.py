@@ -1,4 +1,5 @@
 from pydantic import BaseModel, field_validator
+from typing import Optional
 
 
 class PurchaseRequest(BaseModel):
@@ -26,6 +27,6 @@ class PurchaseResponse(BaseModel):
     new_percent_spent: float
     impact_percent: float
     suggested_installments: int
-    installment_value: float          # ✅ valor de cada parcela sugerida
+    installment_value: float
     recommendation: str
-
+    ai_analysis: Optional[str] = None  # análise qualitativa gerada pela IA
