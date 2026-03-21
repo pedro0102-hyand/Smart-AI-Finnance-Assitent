@@ -2,13 +2,15 @@ import { useEffect, useState } from 'react'
 import {
   TrendingUp, TrendingDown, Wallet, AlertTriangle,
   RefreshCw, ArrowUpRight, Sparkles,
+  Calendar, Flame, AlertOctagon, CheckCircle2,
 } from 'lucide-react'
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  AreaChart, Area, ReferenceLine,
 } from 'recharts'
-import { summaryApi } from '../services/api'
-import type { FinancialSummary } from '../types'
+import { summaryApi, forecastApi } from '../services/api'
+import type { FinancialSummary, ForecastResponse } from '../types'
 
 const fmt = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -204,17 +206,165 @@ function CustomTooltip({ active, payload }: any) {
   )
 }
 
+// ── ForecastCard ──────────────────────────────────────────────────────────────
+const PACE_CONFIG = {
+  'saudável': { bg: 'bg-success/10 border-success/30', text: 'text-success',  icon: CheckCircle2,  label: 'Ritmo saudável'  },
+  'atenção':  { bg: 'bg-warning/10 border-warning/30', text: 'text-warning',  icon: Flame,         label: 'Atenção ao ritmo' },
+  'crítico':  { bg: 'bg-danger/10  border-danger/30',  text: 'text-danger',   icon: AlertOctagon,  label: 'Ritmo crítico'   },
+}
+
+function ForecastTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-xs shadow-lg">
+      <p className="text-[var(--text-muted)]">Dia {payload[0]?.payload?.day}</p>
+      <p className="font-semibold">{fmt(payload[0]?.value ?? 0)}</p>
+    </div>
+  )
+}
+
+function ForecastCard({ forecast }: { forecast: ForecastResponse }) {
+  const config = PACE_CONFIG[forecast.pace]
+  const Icon   = config.icon
+
+  const chartData = (() => {
+    let cumulative = 0
+    return forecast.daily_expenses.map(d => {
+      cumulative += d.amount
+      return { day: d.day, acumulado: Math.round(cumulative * 100) / 100 }
+    })
+  })()
+
+  const projectionData = (() => {
+    const last = chartData.at(-1)?.acumulado ?? forecast.total_expenses
+    const result = [...chartData]
+    for (let d = forecast.today + 1; d <= forecast.days_in_month; d++) {
+      result.push({
+        day:       d,
+        acumulado: Math.round((last + forecast.daily_average * (d - forecast.today)) * 100) / 100,
+      })
+    }
+    return result
+  })()
+
+  return (
+    <div className="card p-4 md:p-6 space-y-5">
+
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Calendar size={14} className="text-[var(--text-muted)]" />
+            <span className="label text-[10px] md:text-xs">Projeção do mês</span>
+          </div>
+          <p className="text-[var(--text-muted)] text-xs md:text-sm">
+            Dia <strong className="text-[var(--text-primary)]">{forecast.today}</strong> de{' '}
+            <strong className="text-[var(--text-primary)]">{forecast.days_in_month}</strong>
+            {' '}— faltam <strong className="text-[var(--text-primary)]">{forecast.days_remaining}</strong> dias
+          </p>
+        </div>
+        <div className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium ${config.bg} ${config.text}`}>
+          <Icon size={12} />
+          {config.label}
+        </div>
+      </div>
+
+      {/* Métricas */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: 'Gasto médio/dia',      value: fmt(forecast.daily_average),    sub: 'nos dias com gasto' },
+          { label: 'Projeção fim do mês',  value: fmt(forecast.projected_total),  sub: `${forecast.projected_percent.toFixed(1)}% da renda`, highlight: forecast.projected_percent > forecast.threshold_percent },
+          { label: 'Saldo projetado',      value: fmt(forecast.projected_remaining), sub: forecast.projected_remaining >= 0 ? 'no positivo' : 'no negativo', danger: forecast.projected_remaining < 0 },
+          { label: 'Limite seguro',        value: fmt(forecast.threshold_amount), sub: `${forecast.threshold_percent}% da renda` },
+        ].map(({ label, value, sub, highlight, danger }: any) => (
+          <div key={label} className="rounded-xl bg-[var(--bg-secondary)] p-3">
+            <p className="text-[10px] text-[var(--text-muted)] mb-1">{label}</p>
+            <p className={`font-display text-base md:text-lg leading-tight ${danger ? 'text-danger' : highlight ? 'text-warning' : ''}`}>{value}</p>
+            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Gráfico de área */}
+      {chartData.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mb-3 font-medium">
+            Gasto acumulado no mês
+          </p>
+          <ResponsiveContainer width="100%" height={130}>
+            <AreaChart data={projectionData} margin={{ top: 4, right: 24, left: -28, bottom: 0 }}>
+              <defs>
+                <linearGradient id="fg1" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor="#f59e0b" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.03} />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="day" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} interval={Math.floor(projectionData.length / 5)} />
+              <YAxis tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} tickFormatter={v => `R$${(v / 1000).toFixed(1)}k`} />
+              <Tooltip content={<ForecastTooltip />} />
+              <ReferenceLine y={forecast.threshold_amount} stroke="#f87171" strokeDasharray="4 3" strokeWidth={1.5}
+                label={{ value: `${forecast.threshold_percent}%`, position: 'right', fontSize: 9, fill: '#f87171' }} />
+              {/* Área real */}
+              <Area type="monotone" dataKey="acumulado" data={chartData}
+                stroke="#f59e0b" strokeWidth={2} fill="url(#fg1)" dot={false}
+                activeDot={{ r: 3, fill: '#f59e0b' }} />
+              {/* Projeção tracejada */}
+              <Area type="monotone" dataKey="acumulado" data={projectionData.slice(forecast.today - 1)}
+                stroke="#9ca3af" strokeWidth={1.5} strokeDasharray="5 3" fill="none" dot={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+          <div className="flex items-center justify-center gap-4 mt-1.5 text-[10px] text-[var(--text-muted)]">
+            <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-amber-500 rounded" />real</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-[var(--text-muted)] opacity-60 rounded" style={{ borderTop: '1.5px dashed currentColor' }} />projeção</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-danger opacity-70 rounded" />limite {forecast.threshold_percent}%</span>
+          </div>
+        </div>
+      )}
+
+      {/* Alerta */}
+      {forecast.will_exceed_threshold ? (
+        <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm
+          ${forecast.pace === 'crítico' ? 'border-danger/30 bg-danger/5 text-danger' : 'border-warning/30 bg-warning/5 text-warning'}`}>
+          <AlertOctagon size={15} className="shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium leading-snug">
+              {forecast.exceed_day === forecast.today
+                ? `Você já ultrapassou ${forecast.threshold_percent}% da renda hoje.`
+                : `No ritmo atual, você vai ultrapassar ${forecast.threshold_percent}% da renda no ${forecast.exceed_date}.`}
+            </p>
+            <p className="text-xs opacity-80 mt-0.5">{forecast.pace_message}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-3 text-sm text-success">
+          <TrendingUp size={15} className="shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium leading-snug">Projeção dentro do limite de {forecast.threshold_percent}% da renda.</p>
+            <p className="text-xs opacity-80 mt-0.5">{forecast.pace_message}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [summary, setSummary] = useState<FinancialSummary | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState<string | null>(null)
+  const [summary, setSummary]   = useState<FinancialSummary | null>(null)
+  const [forecast, setForecast] = useState<ForecastResponse | null>(null)
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState<string | null>(null)
 
   async function load() {
     setLoading(true); setError(null)
-    try { setSummary(await summaryApi.get()) }
-    catch (e: any) { setError(e.message ?? 'Erro ao carregar dados') }
-    finally { setLoading(false) }
+    try {
+      setSummary(await summaryApi.get())
+      try { setForecast(await forecastApi.get()) } catch { setForecast(null) }
+    } catch (e: any) {
+      setError(e.message ?? 'Erro ao carregar dados')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { load() }, [])
@@ -277,6 +427,9 @@ export default function Dashboard() {
       </div>
 
       <BudgetBar spent={summary.percent_spent} />
+
+      {/* ── Projeção do mês ── */}
+      {forecast && <ForecastCard forecast={forecast} />}
 
       {summary.expenses.length > 0 && (
         <div className="grid gap-3 md:gap-4 md:grid-cols-2">

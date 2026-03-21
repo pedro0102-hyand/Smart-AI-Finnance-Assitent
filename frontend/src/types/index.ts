@@ -44,6 +44,29 @@ export interface FinancialSummary {
   suggestion: string
 }
 
+// ── Forecast ──────────────────────────────────────────────────────────────────
+export interface ForecastResponse {
+  today: number
+  days_in_month: number
+  days_remaining: number
+  days_elapsed: number
+  total_expenses: number
+  salary: number
+  daily_average: number
+  daily_average_all: number
+  projected_total: number
+  projected_percent: number
+  projected_remaining: number
+  will_exceed_threshold: boolean
+  threshold_percent: number
+  threshold_amount: number
+  exceed_day: number | null
+  exceed_date: string | null
+  pace: 'saudável' | 'atenção' | 'crítico'
+  pace_message: string
+  daily_expenses: { day: number; amount: number }[]
+}
+
 // ── Purchase ──────────────────────────────────────────────────────────────────
 export interface PurchaseRequest {
   description: string

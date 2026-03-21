@@ -2,6 +2,7 @@ import type {
   Expense, ExpenseCreate, ExpenseUpdate,
   Salary, SalaryCreate,
   FinancialSummary,
+  ForecastResponse,
   PurchaseRequest, PurchaseResponse,
   ChatRequest, ChatResponse,
 } from '../types'
@@ -42,17 +43,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       ...options,
     })
   } catch {
-    // fetch lança TypeError quando não consegue conectar
     throw new NetworkError()
   }
 
-  // 204 No Content — sem body
   if (res.status === 204) return undefined as T
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: `Erro HTTP ${res.status}` }))
     const message = body.detail ?? `Erro HTTP ${res.status}`
-
     if (res.status >= 500) throw new ServerError(res.status, `Erro interno do servidor: ${message}`)
     throw new ApiError(message)
   }
@@ -72,12 +70,12 @@ export function friendlyErrorMessage(error: unknown): string {
 
 // ── Expenses ──────────────────────────────────────────────────────────────────
 export const expensesApi = {
-  list:      ()                               => request<Expense[]>('/expenses/'),
-  get:       (id: number)                     => request<Expense>(`/expenses/${id}`),
-  create:    (data: ExpenseCreate)            => request<Expense>('/expenses/', { method: 'POST', body: JSON.stringify(data) }),
+  list:      ()                                => request<Expense[]>('/expenses/'),
+  get:       (id: number)                      => request<Expense>(`/expenses/${id}`),
+  create:    (data: ExpenseCreate)             => request<Expense>('/expenses/', { method: 'POST', body: JSON.stringify(data) }),
   update:    (id: number, data: ExpenseUpdate) => request<Expense>(`/expenses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  delete:    (id: number)                     => request<void>(`/expenses/${id}`, { method: 'DELETE' }),
-  deleteAll: ()                               => request<void>('/expenses/', { method: 'DELETE' }),
+  delete:    (id: number)                      => request<void>(`/expenses/${id}`, { method: 'DELETE' }),
+  deleteAll: ()                                => request<void>('/expenses/', { method: 'DELETE' }),
 }
 
 // ── Salary ────────────────────────────────────────────────────────────────────
@@ -92,9 +90,16 @@ export const summaryApi = {
   get: () => request<FinancialSummary>('/summary/'),
 }
 
+// ── Forecast ──────────────────────────────────────────────────────────────────
+export const forecastApi = {
+  get: (threshold = 80) =>
+    request<ForecastResponse>(`/summary/forecast/?threshold=${threshold}`),
+}
+
 // ── Purchase ──────────────────────────────────────────────────────────────────
 export const purchaseApi = {
-  check: (data: PurchaseRequest) => request<PurchaseResponse>('/can-i-buy/', { method: 'POST', body: JSON.stringify(data) }),
+  check: (data: PurchaseRequest) =>
+    request<PurchaseResponse>('/can-i-buy/', { method: 'POST', body: JSON.stringify(data) }),
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
