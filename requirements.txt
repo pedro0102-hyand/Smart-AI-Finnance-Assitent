@@ -4,3 +4,7 @@ sqlalchemy==2.0.29
 pydantic==2.6.4
 python-dotenv==1.0.1
 google-genai>=0.8.0
+python-jose==3.3.0
+cryptography==42.0.5
+passlib==1.7.4
+bcrypt==4.1.2
