@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { TrendingUp, Mail, Lock, User, Eye, EyeOff, AlertCircle, ArrowRight, Loader2 } from 'lucide-react'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../context/AuthContext'
 
 type Mode = 'login' | 'register'
 
