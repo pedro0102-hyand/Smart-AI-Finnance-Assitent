@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
+from app.deps import get_current_user
 from app.models.expense import Expense
 from app.models.salary import Salary
+from app.models.user import User
 from app.schemas.purchase import PurchaseRequest, PurchaseResponse
 from app.services.financial_analyzer import analyze_purchase
 
@@ -26,16 +28,23 @@ def _suggest_installments(purchase_amount: float, total_expenses: float, salary_
 
 
 @router.post("/", response_model=PurchaseResponse)
-def can_i_buy(purchase: PurchaseRequest, db: Session = Depends(get_db)):
-
-    salary = db.query(Salary).filter(Salary.is_current == True).first()
+def can_i_buy(
+    purchase: PurchaseRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    salary = (
+        db.query(Salary)
+        .filter(Salary.user_id == current_user.id, Salary.is_current == True)
+        .first()
+    )
     if not salary:
         return {"error": "Nenhum salário cadastrado."}
 
-    expenses = db.query(Expense).all()
+    expenses = db.query(Expense).filter(Expense.user_id == current_user.id).all()
 
-    salary_amount   = salary.amount
-    total_expenses  = sum(exp.amount for exp in expenses)
+    salary_amount  = salary.amount
+    total_expenses = sum(exp.amount for exp in expenses)
 
     current_percent_spent = (total_expenses / salary_amount) * 100
 
@@ -62,7 +71,6 @@ def can_i_buy(purchase: PurchaseRequest, db: Session = Depends(get_db)):
     installment_value      = round(purchase.amount / suggested_installments, 2)
 
     # ── Análise qualitativa via IA ────────────────────────────────────────────
-    # Monta lista de gastos detalhados para dar contexto à IA
     detailed_expenses = [
         {
             "description": exp.description,
@@ -74,15 +82,15 @@ def can_i_buy(purchase: PurchaseRequest, db: Session = Depends(get_db)):
     ]
 
     ai_analysis = analyze_purchase(
-        description           = purchase.description,
-        amount                = purchase.amount,
-        salary                = salary_amount,
-        current_percent_spent = current_percent_spent,
-        new_percent_spent     = new_percent_spent,
-        suggested_installments= suggested_installments,
-        installment_value     = installment_value,
-        can_buy               = can_buy,
-        expenses              = detailed_expenses,
+        description            = purchase.description,
+        amount                 = purchase.amount,
+        salary                 = salary_amount,
+        current_percent_spent  = current_percent_spent,
+        new_percent_spent      = new_percent_spent,
+        suggested_installments = suggested_installments,
+        installment_value      = installment_value,
+        can_buy                = can_buy,
+        expenses               = detailed_expenses,
     )
 
     return PurchaseResponse(
