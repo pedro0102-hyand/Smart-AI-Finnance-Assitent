@@ -7,7 +7,8 @@ import type {
   ChatRequest, ChatResponse,
 } from '../types'
 
-const BASE_URL = 'http://localhost:8000'
+// Em produção lê VITE_API_URL; em dev cai no localhost
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 // ── Classes de erro ────────────────────────────────────────────────────────────
 export class NetworkError extends Error {
@@ -38,7 +39,7 @@ export class UnauthorizedError extends Error {
   }
 }
 
-// ── Token getter (lê do localStorage em runtime) ──────────────────────────────
+// ── Token getter ───────────────────────────────────────────────────────────────
 function getAccessToken(): string | null {
   return localStorage.getItem('sf_access_token')
 }
@@ -61,7 +62,6 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (res.status === 204) return undefined as T
 
   if (res.status === 401) {
-    // Dispara evento global para o AuthContext fazer logout
     window.dispatchEvent(new CustomEvent('sf:unauthorized'))
     throw new UnauthorizedError()
   }
@@ -78,11 +78,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 // ── Friendly error ─────────────────────────────────────────────────────────────
 export function friendlyErrorMessage(error: unknown): string {
-  if (error instanceof NetworkError)     return error.message
+  if (error instanceof NetworkError)      return error.message
   if (error instanceof UnauthorizedError) return error.message
-  if (error instanceof ServerError)      return `Erro no servidor (${error.status}). Tente novamente em instantes.`
-  if (error instanceof ApiError)         return error.message
-  if (error instanceof Error)            return error.message
+  if (error instanceof ServerError)       return `Erro no servidor (${error.status}). Tente novamente em instantes.`
+  if (error instanceof ApiError)          return error.message
+  if (error instanceof Error)             return error.message
   return 'Ocorreu um erro inesperado. Tente novamente.'
 }
 

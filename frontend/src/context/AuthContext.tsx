@@ -3,7 +3,6 @@ import {
   useCallback, useRef, type ReactNode,
 } from 'react'
 
-// ── Tipos ──────────────────────────────────────────────────────────────────────
 export interface AuthUser {
   id: number
   name: string
@@ -20,34 +19,29 @@ interface AuthContextValue extends AuthState {
   login:   (email: string, password: string) => Promise<void>
   register:(name: string, email: string, password: string) => Promise<void>
   logout:  () => void
-  isReady: boolean   // true depois que o contexto terminou de inicializar
+  isReady: boolean
 }
 
-// ── Storage keys ───────────────────────────────────────────────────────────────
 const KEY_ACCESS  = 'sf_access_token'
 const KEY_REFRESH = 'sf_refresh_token'
 const KEY_USER    = 'sf_user'
 
-const BASE_URL = 'http://localhost:8000'
+// Em produção lê VITE_API_URL; em dev cai no localhost
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
-// ── Context ────────────────────────────────────────────────────────────────────
 const AuthContext = createContext<AuthContextValue>({
   user: null, accessToken: null, refreshToken: null,
   login: async () => {}, register: async () => {}, logout: () => {},
   isReady: false,
 })
 
-// ── Provider ───────────────────────────────────────────────────────────────────
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
-    user:         null,
-    accessToken:  null,
-    refreshToken: null,
+    user: null, accessToken: null, refreshToken: null,
   })
   const [isReady, setIsReady] = useState(false)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // ── Persist helpers ──────────────────────────────────────────────────────────
   function persist(user: AuthUser, accessToken: string, refreshToken: string) {
     localStorage.setItem(KEY_ACCESS,  accessToken)
     localStorage.setItem(KEY_REFRESH, refreshToken)
@@ -64,7 +58,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
   }
 
-  // ── Token decode (sem lib extra) ──────────────────────────────────────────
   function getTokenExp(token: string): number | null {
     try {
       const payload = JSON.parse(atob(token.split('.')[1]))
@@ -74,7 +67,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // ── Auto-refresh: roda 60s antes de o access token expirar ───────────────
   const doRefresh = useCallback(async (refreshToken: string) => {
     try {
       const res = await fetch(`${BASE_URL}/auth/refresh`, {
@@ -96,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
     const exp = getTokenExp(accessToken)
     if (!exp) return
-    const msUntilRefresh = (exp * 1000) - Date.now() - 60_000   // 60s antes
+    const msUntilRefresh = (exp * 1000) - Date.now() - 60_000
     if (msUntilRefresh <= 0) return
     refreshTimerRef.current = setTimeout(() => {
       const rt = localStorage.getItem(KEY_REFRESH)
@@ -104,7 +96,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, msUntilRefresh)
   }
 
-  // ── Restore session on mount ───────────────────────────────────────────────
   useEffect(() => {
     const access  = localStorage.getItem(KEY_ACCESS)
     const refresh = localStorage.getItem(KEY_REFRESH)
@@ -115,11 +106,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const user = JSON.parse(userRaw) as AuthUser
         const exp  = getTokenExp(access)
         if (exp && exp * 1000 > Date.now()) {
-          // token ainda válido
           setState({ user, accessToken: access, refreshToken: refresh })
           scheduleRefresh(access)
         } else if (refresh) {
-          // access expirado, tenta refresh silencioso
           doRefresh(refresh)
         } else {
           clear()
@@ -135,7 +124,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Auth actions ──────────────────────────────────────────────────────────
   async function login(email: string, password: string) {
     const res = await fetch(`${BASE_URL}/auth/login`, {
       method:  'POST',
@@ -164,9 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(data.user, data.access_token, data.refresh_token)
   }
 
-  function logout() {
-    clear()
-  }
+  function logout() { clear() }
 
   return (
     <AuthContext.Provider value={{ ...state, login, register, logout, isReady }}>
