@@ -18,7 +18,32 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 
 # ── Configurações ──────────────────────────────────────────────────────────────
-SECRET_KEY            = os.getenv("SECRET_KEY", "CHANGE_ME_IN_PRODUCTION_USE_OPENSSL_RAND")
+# SECRET_KEY DEVE ser definida via variável de ambiente.
+# Em desenvolvimento coloque no .env:  SECRET_KEY=<string longa e aleatória>
+# Gere uma com:  python -c "import secrets; print(secrets.token_hex(32))"
+#
+# A aplicação recusa iniciar em produção sem a variável definida.
+# Em desenvolvimento aceita um fallback APENAS se APP_ENV != "production".
+
+_APP_ENV   = os.getenv("APP_ENV", "development")
+_secret_env = os.getenv("SECRET_KEY", "")
+
+if not _secret_env:
+    if _APP_ENV == "production":
+        raise RuntimeError(
+            "SECRET_KEY não definida. "
+            "Defina a variável de ambiente SECRET_KEY antes de iniciar em produção."
+        )
+    # Desenvolvimento: usa um valor fixo mas emite aviso claro no log
+    import warnings
+    _secret_env = "dev-only-insecure-secret-change-me"
+    warnings.warn(
+        "⚠️  SECRET_KEY não definida — usando valor inseguro de desenvolvimento. "
+        "Defina SECRET_KEY no seu .env antes de ir para produção.",
+        stacklevel=1,
+    )
+
+SECRET_KEY            = _secret_env
 ALGORITHM             = "HS256"
 ACCESS_TOKEN_MINUTES  = 30        # access token: 30 minutos
 REFRESH_TOKEN_DAYS    = 30        # refresh token: 30 dias
