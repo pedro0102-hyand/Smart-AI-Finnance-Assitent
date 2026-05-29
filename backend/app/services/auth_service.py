@@ -6,7 +6,7 @@ Responsável por:
   - Geração e validação de JWT (access + refresh tokens)
   - Helpers para criar e buscar usuários
 """
-
+import bcrypt
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -54,11 +54,17 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # ── Senha ──────────────────────────────────────────────────────────────────────
 
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+
+    #transformando a string em bytes, gera salf e faz hash
+    pwd_bytes = plain.encode("utf-8")
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+
+    #compara a senha em texto plano com a senha hasheada, ambos em bytes
+    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 
 # ── JWT ────────────────────────────────────────────────────────────────────────
