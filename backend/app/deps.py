@@ -19,21 +19,26 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    """
-    Extrai e valida o JWT do header Authorization: Bearer <token>.
-    Lança 401 se inválido/expirado.
-    """
-    token   = credentials.credentials
+    token = credentials.credentials
     payload = decode_access_token(token)
 
-    if payload is None:
+    if payload is None or "sub" not in payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token inválido ou expirado.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = get_user_by_id(db, int(payload["sub"]))
+    try:
+        user_id = int(payload["sub"])
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Formato de identificador de usuário inválido.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = get_user_by_id(db, user_id)
 
     if user is None or not user.is_active:
         raise HTTPException(
