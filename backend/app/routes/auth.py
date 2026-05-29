@@ -19,7 +19,7 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 
 @router.post("/register", response_model=MeResponse, status_code=201)
 def register(body: RegisterRequest, db: Session = Depends(get_db)):
-    """Cria uma nova conta de usuário."""
+    """Cria uma nova conta de usuário com validações estritas."""
     if get_user_by_email(db, body.email):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -32,6 +32,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
         user=UserResponse.model_validate(user),
         access_token=create_access_token(user.id, user.email),
         refresh_token=create_refresh_token(user.id),
+        # token_type se preenche sozinho com o valor default "bearer"
     )
 
 

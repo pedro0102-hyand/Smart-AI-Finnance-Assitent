@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
 
 
 class RegisterRequest(BaseModel):
@@ -41,8 +41,8 @@ class UserResponse(BaseModel):
     name: str
     email: str
 
-    class Config:
-        from_attributes = True
+    # Padrão recomendado para o Pydantic v2 (substitui o antigo class Config)
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MeResponse(BaseModel):
