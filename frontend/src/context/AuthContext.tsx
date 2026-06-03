@@ -152,7 +152,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(data.user, data.access_token, data.refresh_token)
   }
 
-  function logout() { clear() }
+  function logout() {
+    const refreshToken = localStorage.getItem(KEY_REFRESH)
+    if (refreshToken) {
+      fetch(`${BASE_URL}/auth/logout`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ refresh_token: refreshToken }),
+      }).catch(() => {})
+    }
+    clear()
+  }
 
   return (
     <AuthContext.Provider value={{ ...state, login, register, logout, isReady }}>

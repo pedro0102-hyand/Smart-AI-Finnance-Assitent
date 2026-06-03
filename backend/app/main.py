@@ -4,7 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
-from app.config import validate_env                   
+from app.config import validate_env
+import app.models  # noqa: F401 — registra modelos antes do create_all
 from app.routes.expense import router as expense_router
 from app.routes.salary import router as salary_router
 from app.routes.summary import router as summary_router

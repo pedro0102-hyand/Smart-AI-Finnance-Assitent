@@ -5,12 +5,13 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
 from app.schemas.auth import (
-    LoginRequest, RegisterRequest, RefreshRequest,
+    LoginRequest, RegisterRequest, RefreshRequest, LogoutRequest,
     TokenResponse, UserResponse, MeResponse,
 )
 from app.services.auth_service import (
     authenticate_user, create_user, get_user_by_email,
-    create_access_token, create_refresh_token, decode_refresh_token,
+    create_access_token, create_refresh_token,
+    store_refresh_token, revoke_refresh_token, validate_stored_refresh_token,
     get_user_by_id,
 )
 
@@ -28,10 +29,13 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
     user = create_user(db, name=body.name, email=body.email, password=body.password)
 
+    refresh_token = create_refresh_token(user.id)
+    store_refresh_token(db, user.id, refresh_token)
+
     return MeResponse(
         user=UserResponse.model_validate(user),
         access_token=create_access_token(user.id, user.email),
-        refresh_token=create_refresh_token(user.id),
+        refresh_token=refresh_token,
         # token_type se preenche sozinho com o valor default "bearer"
     )
 
@@ -47,17 +51,20 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
             detail="E-mail ou senha incorretos.",
         )
 
+    refresh_token = create_refresh_token(user.id)
+    store_refresh_token(db, user.id, refresh_token)
+
     return MeResponse(
         user=UserResponse.model_validate(user),
         access_token=create_access_token(user.id, user.email),
-        refresh_token=create_refresh_token(user.id),
+        refresh_token=refresh_token,
     )
 
 
 @router.post("/refresh", response_model=TokenResponse)
 def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
     """Gera um novo access token a partir de um refresh token válido."""
-    user_id = decode_refresh_token(body.refresh_token)
+    user_id = validate_stored_refresh_token(db, body.refresh_token)
 
     if user_id is None:
         raise HTTPException(
@@ -72,10 +79,20 @@ def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
             detail="Usuário não encontrado.",
         )
 
+    revoke_refresh_token(db, body.refresh_token)
+    refresh_token = create_refresh_token(user.id)
+    store_refresh_token(db, user.id, refresh_token)
+
     return TokenResponse(
         access_token=create_access_token(user.id, user.email),
-        refresh_token=create_refresh_token(user.id),
+        refresh_token=refresh_token,
     )
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(body: LogoutRequest, db: Session = Depends(get_db)):
+    """Revoga o refresh token no servidor, invalidando futuras renovações."""
+    revoke_refresh_token(db, body.refresh_token)
 
 
 @router.get("/me", response_model=UserResponse)

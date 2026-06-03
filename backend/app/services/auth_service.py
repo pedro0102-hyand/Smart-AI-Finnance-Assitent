@@ -1,4 +1,5 @@
 
+import hashlib
 import bcrypt
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -7,6 +8,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from app.models.user import User
+from app.models.refresh_token import RefreshToken
 from app.config import get_secret_key         
 
 # ── Configurações ──────────────────────────────────────────────────────────────
@@ -69,6 +71,67 @@ def decode_refresh_token(token: str) -> Optional[int]:
         return int(payload["sub"])
     except JWTError:
         return None
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _get_token_expires_at(token: str) -> Optional[datetime]:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        exp = payload.get("exp")
+        if exp is None:
+            return None
+        return datetime.fromtimestamp(exp, tz=timezone.utc)
+    except JWTError:
+        return None
+
+
+def store_refresh_token(db: Session, user_id: int, token: str) -> None:
+    expires_at = _get_token_expires_at(token)
+    if expires_at is None:
+        return
+
+    db.add(RefreshToken(
+        user_id=user_id,
+        token_hash=_hash_token(token),
+        expires_at=expires_at,
+    ))
+    db.commit()
+
+
+def revoke_refresh_token(db: Session, token: str) -> bool:
+    token_hash = _hash_token(token)
+    record = db.query(RefreshToken).filter(
+        RefreshToken.token_hash == token_hash,
+        RefreshToken.revoked_at.is_(None),
+    ).first()
+
+    if not record:
+        return False
+
+    record.revoked_at = datetime.now(timezone.utc)
+    db.commit()
+    return True
+
+
+def validate_stored_refresh_token(db: Session, token: str) -> Optional[int]:
+    user_id = decode_refresh_token(token)
+    if user_id is None:
+        return None
+
+    token_hash = _hash_token(token)
+    record = db.query(RefreshToken).filter(
+        RefreshToken.token_hash == token_hash,
+        RefreshToken.revoked_at.is_(None),
+        RefreshToken.expires_at > datetime.now(timezone.utc),
+    ).first()
+
+    if not record or record.user_id != user_id:
+        return None
+
+    return user_id
 
 
 # ── CRUD de usuário ────────────────────────────────────────────────────────────
