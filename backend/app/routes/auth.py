@@ -4,6 +4,11 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
+from app.rate_limit import (
+    rate_limit_auth_login,
+    rate_limit_auth_register,
+    rate_limit_auth_refresh,
+)
 from app.schemas.auth import (
     LoginRequest, RegisterRequest, RefreshRequest, LogoutRequest,
     TokenResponse, UserResponse, MeResponse,
@@ -20,7 +25,11 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
 @router.post("/register", response_model=MeResponse, status_code=201)
-def register(body: RegisterRequest, db: Session = Depends(get_db)):
+def register(
+    body: RegisterRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(rate_limit_auth_register),
+):
     """Cria uma nova conta de usuário com validações estritas."""
     if get_user_by_email(db, body.email):
         raise HTTPException(
@@ -42,7 +51,11 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=MeResponse)
-def login(body: LoginRequest, db: Session = Depends(get_db)):
+def login(
+    body: LoginRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(rate_limit_auth_login),
+):
     """Autentica email + senha e retorna tokens JWT."""
     user = authenticate_user(db, body.email, body.password)
 
@@ -63,7 +76,11 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=TokenResponse)
-def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
+def refresh(
+    body: RefreshRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(rate_limit_auth_refresh),
+):
     """Gera um novo access token a partir de um refresh token válido."""
     user_id = validate_stored_refresh_token(db, body.refresh_token)
 

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
+from app.rate_limit import rate_limit_chat_user
 from app.services.finance_service import get_financial_summary
 from app.services.ai_agent import chat_with_ai, clear_history
 
@@ -25,7 +26,7 @@ class ChatResponse(BaseModel):
 def chat(
     request: ChatRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(rate_limit_chat_user),
 ):
     financial_context = get_financial_summary(db, user_id=current_user.id)
 
@@ -49,7 +50,7 @@ def chat(
 def delete_history(
     session_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(rate_limit_chat_user),
 ):
     clear_history(f"{current_user.id}_{session_id}", db)
     return {"message": f"Histórico da sessão '{session_id}' apagado com sucesso."}
