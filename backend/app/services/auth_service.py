@@ -39,9 +39,14 @@ def _create_token(data: dict, expires_delta: timedelta) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def create_access_token(user_id: int, email: str) -> str:
+def create_access_token(user_id: int, email: str, token_version: int) -> str:
     return _create_token(
-        {"sub": str(user_id), "email": email, "type": "access"},
+        {
+            "sub": str(user_id),
+            "email": email,
+            "type": "access",
+            "ver": token_version,
+        },
         timedelta(minutes=ACCESS_TOKEN_MINUTES),
     )
 
@@ -132,6 +137,20 @@ def validate_stored_refresh_token(db: Session, token: str) -> Optional[int]:
         return None
 
     return user_id
+
+
+def increment_token_version(db: Session, user_id: int) -> None:
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return
+
+    user.token_version += 1
+    db.commit()
+
+
+def invalidate_user_tokens(db: Session, user_id: int) -> None:
+    """Invalida access tokens em circulação incrementando a versão do usuário."""
+    increment_token_version(db, user_id)
 
 
 # ── CRUD de usuário ────────────────────────────────────────────────────────────

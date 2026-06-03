@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import engine, Base
+from app.database import engine, Base, ensure_schema
 from app.config import validate_env
 import app.models  # noqa: F401 — registra modelos antes do create_all
 from app.routes.expense import router as expense_router
@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
     validate_env()
 
     Base.metadata.create_all(bind=engine)
+    ensure_schema()
     yield
 
 

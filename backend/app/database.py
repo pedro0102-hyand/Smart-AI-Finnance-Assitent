@@ -22,6 +22,23 @@ engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+
+def ensure_schema() -> None:
+    """Aplica alterações incrementais de schema em bancos já existentes."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+
+    columns = {col["name"] for col in inspector.get_columns("users")}
+    if "token_version" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1"
+            ))
+
+
 def get_db():
     """Fornece uma sessão de banco de dados para as rotas."""
     db = SessionLocal()

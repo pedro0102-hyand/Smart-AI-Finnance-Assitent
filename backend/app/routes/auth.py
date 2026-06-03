@@ -12,6 +12,7 @@ from app.services.auth_service import (
     authenticate_user, create_user, get_user_by_email,
     create_access_token, create_refresh_token,
     store_refresh_token, revoke_refresh_token, validate_stored_refresh_token,
+    invalidate_user_tokens,
     get_user_by_id,
 )
 
@@ -34,7 +35,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
     return MeResponse(
         user=UserResponse.model_validate(user),
-        access_token=create_access_token(user.id, user.email),
+        access_token=create_access_token(user.id, user.email, user.token_version),
         refresh_token=refresh_token,
         # token_type se preenche sozinho com o valor default "bearer"
     )
@@ -56,7 +57,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
 
     return MeResponse(
         user=UserResponse.model_validate(user),
-        access_token=create_access_token(user.id, user.email),
+        access_token=create_access_token(user.id, user.email, user.token_version),
         refresh_token=refresh_token,
     )
 
@@ -84,15 +85,18 @@ def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
     store_refresh_token(db, user.id, refresh_token)
 
     return TokenResponse(
-        access_token=create_access_token(user.id, user.email),
+        access_token=create_access_token(user.id, user.email, user.token_version),
         refresh_token=refresh_token,
     )
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(body: LogoutRequest, db: Session = Depends(get_db)):
-    """Revoga o refresh token no servidor, invalidando futuras renovações."""
-    revoke_refresh_token(db, body.refresh_token)
+    """Revoga o refresh token e invalida access tokens ativos do usuário."""
+    user_id = validate_stored_refresh_token(db, body.refresh_token)
+    if user_id is not None:
+        revoke_refresh_token(db, body.refresh_token)
+        invalidate_user_tokens(db, user_id)
 
 
 @router.get("/me", response_model=UserResponse)
