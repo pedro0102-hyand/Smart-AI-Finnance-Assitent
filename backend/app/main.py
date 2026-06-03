@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
+from app.config import validate_env                   
 from app.routes.expense import router as expense_router
 from app.routes.salary import router as salary_router
 from app.routes.summary import router as summary_router
@@ -17,19 +18,22 @@ from app.routes.auth import router as auth_router
 async def lifespan(app: FastAPI):
     """
     Gerenciador de ciclo de vida da aplicação.
-    Substitui os eventos antigos de startup/shutdown.
-    Garante que as tabelas sejam criadas apenas quando o servidor iniciar de fato.
+
+    Ordem de inicialização:
+      1. validate_env()  — aborta se configuração de segurança estiver errada
+      2. create_all()    — cria tabelas no banco
+      3. yield           — servidor aceita requisições
     """
-    # Executado no startup da API
+    # Valida variáveis de ambiente ANTES de iniciar qualquer coisa.
+    # Se falhar em produção, o processo encerra com exit code 1.
+    validate_env()
+
     Base.metadata.create_all(bind=engine)
     yield
-    # Código aqui seria executado no shutdown (se necessário)
 
 
-# Inicializa o FastAPI passando o gerenciador de ciclo de vida (lifespan)
 app = FastAPI(title="Smart Finance Assistant API", lifespan=lifespan)
 
-# Configuração dinâmica de CORS via variáveis de ambiente
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
 ALLOWED_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
@@ -41,7 +45,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inclusão ordenada das rotas do sistema
 app.include_router(auth_router)
 app.include_router(expense_router)
 app.include_router(salary_router)

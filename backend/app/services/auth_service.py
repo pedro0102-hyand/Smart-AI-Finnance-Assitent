@@ -1,69 +1,31 @@
-"""
-auth_service.py
-───────────────
-Responsável por:
-  - Hash e verificação de senhas (bcrypt via passlib)
-  - Geração e validação de JWT (access + refresh tokens)
-  - Helpers para criar e buscar usuários
-"""
+
 import bcrypt
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.models.user import User
+from app.config import get_secret_key         
 
 # ── Configurações ──────────────────────────────────────────────────────────────
-# SECRET_KEY DEVE ser definida via variável de ambiente.
-# Em desenvolvimento coloque no .env:  SECRET_KEY=<string longa e aleatória>
-# Gere uma com:  python -c "import secrets; print(secrets.token_hex(32))"
-#
-# A aplicação recusa iniciar em produção sem a variável definida.
-# Em desenvolvimento aceita um fallback APENAS se APP_ENV != "production".
 
-_APP_ENV   = os.getenv("APP_ENV", "development")
-_secret_env = os.getenv("SECRET_KEY", "")
-
-if not _secret_env:
-    if _APP_ENV == "production":
-        raise RuntimeError(
-            "SECRET_KEY não definida. "
-            "Defina a variável de ambiente SECRET_KEY antes de iniciar em produção."
-        )
-    # Desenvolvimento: usa um valor fixo mas emite aviso claro no log
-    import warnings
-    _secret_env = "dev-only-insecure-secret-change-me"
-    warnings.warn(
-        "⚠️  SECRET_KEY não definida — usando valor inseguro de desenvolvimento. "
-        "Defina SECRET_KEY no seu .env antes de ir para produção.",
-        stacklevel=1,
-    )
-
-SECRET_KEY            = _secret_env
+SECRET_KEY            = get_secret_key()      
 ALGORITHM             = "HS256"
-ACCESS_TOKEN_MINUTES  = 30        # access token: 30 minutos
-REFRESH_TOKEN_DAYS    = 30        # refresh token: 30 dias
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+ACCESS_TOKEN_MINUTES  = 30
+REFRESH_TOKEN_DAYS    = 30
 
 
 # ── Senha ──────────────────────────────────────────────────────────────────────
 
 def hash_password(plain: str) -> str:
-
-    #transformando a string em bytes, gera salf e faz hash
     pwd_bytes = plain.encode("utf-8")
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-
-    #compara a senha em texto plano com a senha hasheada, ambos em bytes
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 
@@ -90,7 +52,6 @@ def create_refresh_token(user_id: int) -> str:
 
 
 def decode_access_token(token: str) -> Optional[dict]:
-    """Retorna o payload se válido e do tipo 'access', None caso contrário."""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("type") != "access":
@@ -101,7 +62,6 @@ def decode_access_token(token: str) -> Optional[dict]:
 
 
 def decode_refresh_token(token: str) -> Optional[int]:
-    """Retorna o user_id se o refresh token for válido, None caso contrário."""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("type") != "refresh":

@@ -4,19 +4,17 @@ import hashlib
 import json
 import unicodedata
 import logging
-
+ 
 from google import genai
-from dotenv import load_dotenv
+from app.config import get_google_api_key              # <-- fonte única
 from app.services.api_retry import with_gemini_retry
-
-load_dotenv()
-
-# ── Cliente único compartilhado ───────────────────────────────────────────────
-_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
-
+ 
+_client = genai.Client(api_key=get_google_api_key())
+ 
 logger = logging.getLogger(__name__)
-
+ 
 MODEL_NAME = "gemini-2.5-flash-lite"
+ 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Sets de classificação local — primeira linha de defesa (sem custo de API)
