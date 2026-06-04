@@ -19,16 +19,17 @@ ACCESS_TOKEN_MINUTES  = 30
 REFRESH_TOKEN_DAYS    = 30
 
 
-# ── Senha ──────────────────────────────────────────────────────────────────────
+# ── Senha (bcrypt direto — hashes existentes permanecem compatíveis) ───────────
 
 def hash_password(plain: str) -> str:
-    pwd_bytes = plain.encode("utf-8")
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
+    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except ValueError:
+        return False
 
 
 # ── JWT ────────────────────────────────────────────────────────────────────────
