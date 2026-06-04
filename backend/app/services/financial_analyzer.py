@@ -16,10 +16,6 @@ logger = logging.getLogger(__name__)
 MODEL_NAME = "gemini-2.5-flash-lite"
  
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Sets de classificação local — primeira linha de defesa (sem custo de API)
-# ──────────────────────────────────────────────────────────────────────────────
-
 HIGH_URGENCY = {
     # Moradia
     "moradia", "aluguel", "condominio", "iptu", "financiamento",
