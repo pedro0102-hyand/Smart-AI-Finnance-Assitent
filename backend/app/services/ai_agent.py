@@ -4,11 +4,9 @@ import logging
 from google import genai
 from google.genai import types
 from sqlalchemy.orm import Session
-from app.config import get_google_api_key              # <-- fonte única
 from app.services.api_retry import with_gemini_retry
+from app.services.gemini_client import get_gemini_client
 from app.services import chat_repository as repo
-
-_client = genai.Client(api_key=get_google_api_key())
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +114,7 @@ def _send_message(chat: genai.chats.Chat, message: str) -> str:
 def chat_with_ai(message: str, financial_context: dict, session_id: str, db: Session) -> str:
     session = _get_or_create_session(session_id, financial_context, db)
 
-    chat = _client.chats.create(
+    chat = get_gemini_client().chats.create(
         model=MODEL_NAME,
         config=types.GenerateContentConfig(
             system_instruction=session["system_prompt"],

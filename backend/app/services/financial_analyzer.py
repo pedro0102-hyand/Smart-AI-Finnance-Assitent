@@ -5,11 +5,8 @@ import json
 import unicodedata
 import logging
  
-from google import genai
-from app.config import get_google_api_key              
 from app.services.api_retry import with_gemini_retry
- 
-_client = genai.Client(api_key=get_google_api_key())
+from app.services.gemini_client import get_gemini_client
  
 logger = logging.getLogger(__name__)
  
@@ -206,7 +203,7 @@ Responda APENAS com uma destas três opções exatas (sem pontuação, sem expli
 - Média urgência
 - Baixa urgência"""
 
-    response = _client.models.generate_content(
+    response = get_gemini_client().models.generate_content(
         model=MODEL_NAME,
         contents=prompt,
     )
@@ -371,7 +368,7 @@ def _call_suggestion_api(prompt: str) -> str:
     """
     Chama a API para gerar sugestões financeiras personalizadas.
     """
-    response = _client.models.generate_content(
+    response = get_gemini_client().models.generate_content(
         model=MODEL_NAME,
         contents=prompt,
     )
@@ -408,7 +405,7 @@ def _set_cached_purchase_analysis(key: str, result: str) -> None:
 
 @with_gemini_retry(max_retries=2, base_delay=1.5, fallback_value=None)
 def _call_purchase_analysis_api(prompt: str) -> str:
-    response = _client.models.generate_content(
+    response = get_gemini_client().models.generate_content(
         model=MODEL_NAME,
         contents=prompt,
     )
