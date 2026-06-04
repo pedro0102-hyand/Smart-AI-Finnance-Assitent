@@ -2,6 +2,8 @@ from pydantic import BaseModel, field_validator
 from datetime import datetime
 from typing import Optional
 
+from app.services.financial_analyzer import DEFAULT_URGENCY
+
 
 class ExpenseBase(BaseModel):
     description: str
@@ -66,6 +68,11 @@ class ExpenseResponse(ExpenseBase):
     id: int
     urgency: str
     created_at: datetime
+
+    @field_validator("urgency", mode="before")
+    @classmethod
+    def urgency_fallback(cls, v):
+        return v or DEFAULT_URGENCY
 
     class Config:
         from_attributes = True

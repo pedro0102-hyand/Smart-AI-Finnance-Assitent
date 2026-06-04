@@ -1,7 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from app.database import Base
-from app.services.financial_analyzer import classify_expense
 
 
 class Expense(Base):
@@ -17,7 +16,3 @@ class Expense(Base):
     # consistência mesmo que o salário mude depois do registro.
     impact_percent = Column(Float, nullable=False, default=0.0)
     created_at     = Column(DateTime(timezone=True), server_default=func.now())
-
-    def set_urgency(self):
-        combined = f"{self.description} {self.category}"
-        self.urgency = classify_expense(combined)

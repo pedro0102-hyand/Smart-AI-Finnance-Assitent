@@ -6,7 +6,7 @@ import unicodedata
 import logging
  
 from google import genai
-from app.config import get_google_api_key              # <-- fonte única
+from app.config import get_google_api_key              
 from app.services.api_retry import with_gemini_retry
  
 _client = genai.Client(api_key=get_google_api_key())
@@ -233,6 +233,24 @@ Responda APENAS com uma destas três opções exatas (sem pontuação, sem expli
 # ──────────────────────────────────────────────────────────────────────────────
 # Interface pública
 # ──────────────────────────────────────────────────────────────────────────────
+
+DEFAULT_URGENCY = "Média urgência"
+
+
+def resolve_expense_urgency(description: str, category: str) -> str:
+    """Classifica urgência com fallback garantido — nunca retorna None."""
+    combined = f"{description} {category}".strip()
+    try:
+        result = classify_expense(combined)
+        return result or DEFAULT_URGENCY
+    except Exception:
+        logger.exception(
+            "Falha ao classificar urgência para '%s'. Usando fallback '%s'.",
+            combined,
+            DEFAULT_URGENCY,
+        )
+        return DEFAULT_URGENCY
+
 
 def classify_expense(category: str) -> str:
     """

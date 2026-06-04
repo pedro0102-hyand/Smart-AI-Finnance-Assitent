@@ -6,6 +6,7 @@ from app.models.expense import Expense
 from app.models.user import User
 from app.models.salary import Salary
 from app.schemas import ExpenseCreate, ExpenseResponse, ExpenseUpdate
+from app.services.financial_analyzer import resolve_expense_urgency
 
 router = APIRouter(prefix="/expenses", tags=["Expenses"])
 
@@ -22,7 +23,10 @@ def create_expense(
     ).first()
 
     db_expense = Expense(**expense.model_dump(), user_id=current_user.id)
-    db_expense.set_urgency()
+    db_expense.urgency = resolve_expense_urgency(
+        db_expense.description,
+        db_expense.category,
+    )
 
     # Calcula e persiste impact_percent no momento da criação
     if salary and salary.amount > 0:
@@ -88,8 +92,11 @@ def update_expense(
     for field, value in update_data.items():
         setattr(expense, field, value)
 
-    if "category" in update_data:
-        expense.set_urgency()
+    if "category" in update_data or "description" in update_data:
+        expense.urgency = resolve_expense_urgency(
+            expense.description,
+            expense.category,
+        )
 
     # Recalcula impact_percent se o valor foi alterado
     if "amount" in update_data:

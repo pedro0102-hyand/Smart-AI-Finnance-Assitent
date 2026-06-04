@@ -6,7 +6,7 @@ from app.models.expense import Expense
 from app.models.salary import Salary
 from app.models.user import User
 from app.schemas.purchase import PurchaseRequest, PurchaseResponse
-from app.services.financial_analyzer import analyze_purchase
+from app.services.financial_analyzer import analyze_purchase, DEFAULT_URGENCY
 
 router = APIRouter(prefix="/can-i-buy", tags=["Purchase"])
 
@@ -76,7 +76,7 @@ def can_i_buy(
             "description": exp.description,
             "amount":      exp.amount,
             "category":    exp.category,
-            "urgency":     exp.urgency,
+            "urgency":     exp.urgency or DEFAULT_URGENCY,
         }
         for exp in expenses
     ]

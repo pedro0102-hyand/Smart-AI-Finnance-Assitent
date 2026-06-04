@@ -1,5 +1,6 @@
 from app.models.salary import Salary
 from app.models.expense import Expense
+from app.services.financial_analyzer import DEFAULT_URGENCY
 from sqlalchemy.orm import Session
 
 
@@ -34,7 +35,7 @@ def get_financial_summary(db: Session, user_id: int) -> dict | None:
             "description":    exp.description,
             "amount":         exp.amount,
             "category":       exp.category,
-            "urgency":        exp.urgency,
+            "urgency":        exp.urgency or DEFAULT_URGENCY,
             # Lido da coluna — não recalculado aqui
             "impact_percent": exp.impact_percent,
             "created_at":     exp.created_at.isoformat() if exp.created_at else None,
