@@ -381,9 +381,6 @@ def _call_suggestion_api(prompt: str) -> str:
 
     return response.text 
 
-"""
-Adicionar ao final de backend/app/services/financial_analyzer.py
-"""
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Análise qualitativa de compra via IA
