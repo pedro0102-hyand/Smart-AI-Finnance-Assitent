@@ -9,7 +9,7 @@ Um assistente financeiro pessoal full-stack com IA, que analisa seus gastos, pro
 - **Dashboard** — visão geral do orçamento com gráficos de categorias, projeção do mês e sugestões da IA
 - **Gestão de gastos** — cadastro, edição, exclusão e busca de despesas com classificação automática de urgência por IA
 - **Salário** — histórico completo de renda com variação percentual entre períodos
-- **Posso comprar?** — análise inteligente de compras com sugestão de parcelamento e commentary da IA
+- **Posso comprar?** — análise inteligente de compras com sugestão de parcelamento e commentários da IA
 - **Chat com IA** — assistente conversacional com histórico persistido, focado exclusivamente em finanças pessoais
 - **Projeção mensal** — previsão de gastos até o fim do mês com alertas de ritmo (saudável / atenção / crítico)
 - **Autenticação JWT** — registro, login e refresh token automático
