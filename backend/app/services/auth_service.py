@@ -1,12 +1,9 @@
-
 import hashlib
 import bcrypt
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
-
 from app.models.user import User
 from app.models.refresh_token import RefreshToken
 from app.config import get_secret_key         

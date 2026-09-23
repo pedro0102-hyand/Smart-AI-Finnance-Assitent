@@ -1,7 +1,6 @@
 from pydantic import BaseModel, field_validator
 from datetime import datetime
 from typing import Optional
-
 from app.services.financial_analyzer import DEFAULT_URGENCY
 
 

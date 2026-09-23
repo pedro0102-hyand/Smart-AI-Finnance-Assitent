@@ -1,23 +1,3 @@
-"""
-Repositório responsável por toda a persistência de sessões de chat no SQLite.
-
-Mantém um cache em memória na frente do banco para evitar uma query
-a cada mensagem enviada. O fluxo é:
-
-  leitura : cache hit → retorna direto | cache miss → lê banco → preenche cache
-  escrita : salva no banco → atualiza cache (nunca escreve só no cache)
-  deleção : apaga do banco → remove do cache
-
-Thread-safety:
-  O Uvicorn com múltiplos workers usa threads para processar requisições
-  concorrentes. O _cache dict é protegido por um threading.Lock em todas
-  as operações de leitura e escrita para evitar RuntimeError e race conditions.
-
-  Importante: o lock protege APENAS o cache em memória. O banco de dados
-  (SQLite) tem seu próprio mecanismo de controle de concorrência via
-  check_same_thread=False + serialização de writes pelo SQLAlchemy.
-"""
-
 import json
 import logging
 import threading

@@ -1,10 +1,8 @@
 from google import genai
-
 from app.config import get_google_api_key
 
 _client: genai.Client | None = None
 _cached_api_key: str | None = None
-
 
 def get_gemini_client() -> genai.Client:
     """Cliente Gemini compartilhado; recriado se a API key mudar."""
